@@ -90,6 +90,19 @@ describe('<digital-signature-field>', () => {
     expect(el.value).not.toBeNull();
   });
 
+  it('fires dsf-stroke-start and dsf-stroke-end with the stroke count for kept strokes only', () => {
+    const el = mount();
+    const seen: string[] = [];
+    for (const type of ['dsf-stroke-start', 'dsf-stroke-end']) {
+      el.addEventListener(type, (e) => seen.push(`${type}:${(e as CustomEvent<{ strokeCount: number }>).detail.strokeCount}`));
+    }
+    draw(el, [[10, 10], [12, 10]]); // a tap: no events
+    expect(seen).toEqual([]);
+    draw(el, [[10, 10], [60, 10], [90, 10]]);
+    draw(el, [[10, 50], [60, 80]]);
+    expect(seen).toEqual(['dsf-stroke-start:1', 'dsf-stroke-end:1', 'dsf-stroke-start:2', 'dsf-stroke-end:2']);
+  });
+
   it('renders the ink as SVG with a viewBox matching the drawing area, and exports the same viewBox', () => {
     const el = mount();
     el.style.setProperty('--dsf-height', '150px');

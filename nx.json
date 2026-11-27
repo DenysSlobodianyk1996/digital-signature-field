@@ -14,7 +14,14 @@
       "!{projectRoot}/vitest.config.ts",
       "!{projectRoot}/tsconfig.spec.json",
       "!{projectRoot}/dev/**/*",
-      "!{projectRoot}/index.html"
+      "!{projectRoot}/index.html",
+      "!{projectRoot}/**/*.spec.ts",
+      "!{projectRoot}/src/testing/**/*",
+      "!{projectRoot}/e2e/**/*",
+      "!{projectRoot}/playwright.config.ts",
+      "!{projectRoot}/karma.conf.cjs",
+      "!{projectRoot}/vitest-base.config.ts",
+      "!{projectRoot}/tsconfig.e2e.json"
     ]
   },
   "targetDefaults": {
@@ -35,6 +42,11 @@
     "test": {
       "dependsOn": ["^build"],
       "inputs": ["default", "^production", { "env": "DSF_BROWSERS" }],
+      "cache": true
+    },
+    "e2e": {
+      "dependsOn": ["build"],
+      "inputs": ["default", "^production"],
       "cache": true
     }
   }

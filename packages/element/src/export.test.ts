@@ -337,3 +337,34 @@ describe('legacy regressions', () => {
     expect(pixels.at(pixels.width - 2, pixels.height - 2)).toEqual([255, 255, 255, 255]);
   });
 });
+
+describe('in a form', () => {
+  function inForm(attrs: Record<string, string>): { form: HTMLFormElement; el: DigitalSignatureFieldElement } {
+    const form = document.createElement('form');
+    document.body.append(form);
+    const el = mount({ name: 'signature', ...attrs });
+    form.append(el);
+    return { form, el };
+  }
+
+  it('json values are submitted as JSON text', () => {
+    const { form, el } = inForm({ 'value-format': 'json' });
+    el.value = structuredClone(SIGNATURE);
+    expect(JSON.parse(new FormData(form).get('signature') as string)).toEqual(SIGNATURE);
+  });
+
+  it('png values are submitted as the PNG data URL', () => {
+    const { form, el } = inForm({ 'value-format': 'png' });
+    draw(el, [[10, 10], [60, 10]]);
+    expect(new FormData(form).get('signature')).toBe(el.value);
+  });
+
+  it('a loaded image satisfies required and min-strokes', () => {
+    const { el } = inForm({ required: '', 'min-strokes': '3' });
+    expect(el.checkValidity()).toBe(false);
+    el.value = solidPng(40, 20, '#f00');
+    expect(el.checkValidity()).toBe(true);
+    el.clear();
+    expect(el.validity.valueMissing).toBe(true);
+  });
+});

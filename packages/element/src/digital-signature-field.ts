@@ -1,4 +1,18 @@
-import { ACTIONS_CSS, createActionButton, DEFAULT_ACTION_LABELS, DEFAULT_ACTIONS, type HistoryAction } from './actions';
+import {
+  ACTIONS_CSS,
+  ACTIONS_POSITIONS,
+  createActionButton,
+  createColorGroup,
+  createWidthGroup,
+  DEFAULT_ACTIONS,
+  DEFAULT_LABELS,
+  DEFAULT_PEN_COLORS,
+  parseActions,
+  type ActionsPosition,
+  type HistoryAction,
+  type Labels,
+} from './actions';
+import { FormField } from './form';
 import { History } from './history';
 import { strokeLength, type Point, type Size, type Stroke } from './ink';
 import { toSvgMarkup, type RenderOptions } from './render';
@@ -22,6 +36,24 @@ const template = `
   :host {
     display: block;
   }
+  .root {
+    display: flex;
+    flex-direction: column;
+    gap: var(--dsf-gap, 4px);
+  }
+  .root[data-position='top'] .actions,
+  .root[data-position='start'] .actions {
+    order: -1;
+  }
+  .root[data-position='start'],
+  .root[data-position='end'] {
+    flex-direction: row;
+  }
+  .root[data-position='start'] .area,
+  .root[data-position='end'] .area {
+    flex: 1;
+    min-width: 0;
+  }
   .area {
     position: relative;
     height: var(--dsf-height, 200px);
@@ -34,6 +66,20 @@ const template = `
     overflow: hidden;
     cursor: crosshair;
   }
+  .area:focus-visible {
+    outline: var(--dsf-focus-ring, 2px solid #1a3fbf);
+    outline-offset: 2px;
+  }
+  :host(:state(invalid)) .area {
+    border-color: var(--dsf-invalid-color, #b3261e);
+  }
+  :host(:disabled) .area {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+  :host([readonly]) .area {
+    cursor: default;
+  }
   .ink {
     position: absolute;
     inset: 0;
@@ -42,13 +88,44 @@ const template = `
     display: block;
     pointer-events: none;
   }
+  .placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+    pointer-events: none;
+  }
+  .placeholder[hidden] {
+    display: none;
+  }
+  .status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   ${ACTIONS_CSS}
 </style>
-<div part="root" class="root">
-  <div part="area" class="area" tabindex="0" role="img" aria-label="Signature drawing area">
+<div part="root" class="root" data-position="bottom">
+  <div part="area" class="area" tabindex="0" role="img">
     <svg part="ink" class="ink" xmlns="${SVG_NS}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
+    <div class="placeholder"><slot name="placeholder"></slot></div>
   </div>
-  <div part="actions" class="actions"></div>
+  <div part="actions" class="actions">
+    <slot name="actions">
+      <slot name="actions-start"></slot>
+      <div class="builtins"></div>
+      <slot name="actions-end"></slot>
+    </slot>
+  </div>
+  <div part="status" class="status" role="status" aria-live="polite"></div>
 </div>
 `;
 
@@ -79,6 +156,7 @@ interface ActiveStroke {
 }
 
 const DEFAULT_MIN_STROKE_LENGTH = 8;
+const DEFAULT_MIN_STROKES = 1;
 const DEFAULT_PEN_COLOR = '#000';
 const DEFAULT_PEN_WIDTH = 2;
 const DEFAULT_SMOOTHING = 0.5;
@@ -87,38 +165,88 @@ const DEFAULT_VALUE_FORMAT: ValueFormat = 'svg';
 const DEFAULT_BACKGROUND = '#fff';
 
 export class DigitalSignatureFieldElement extends HTMLElement {
-  static readonly observedAttributes = ['smoothing', 'pressure', 'history-limit'];
+  static readonly formAssociated = true;
+  static readonly observedAttributes = [
+    'smoothing',
+    'pressure',
+    'history-limit',
+    'actions',
+    'actions-position',
+    'pen-color',
+    'pen-width',
+    'disabled',
+    'readonly',
+    'required',
+    'min-strokes',
+  ];
 
+  readonly #root: HTMLDivElement;
   readonly #area: HTMLDivElement;
   readonly #ink: SVGSVGElement;
+  readonly #placeholder: HTMLDivElement;
   readonly #actions: HTMLDivElement;
+  /** The built-in buttons: fallback content of the `actions` slot, between `actions-start` and `actions-end`. */
+  readonly #builtins: HTMLDivElement;
+  readonly #status: HTMLDivElement;
+  readonly #formField: FormField;
+
+  #labels: Labels = DEFAULT_LABELS;
+  #penColors: readonly string[] = DEFAULT_PEN_COLORS;
 
   /** Kept strokes (in drawing-area coordinates) and their undo/redo history. The SVG is always redrawn from this. */
   readonly #history = new History<InkState>(EMPTY, DEFAULT_HISTORY_LIMIT);
+  /** What a native form reset restores: the value the field was first loaded with (empty until a value is loaded). */
+  #initialState: InkState | null = null;
+  /** Disabled by its own `disabled` attribute or by a disabled ancestor `<fieldset>`. */
+  #formDisabled = false;
   #active: ActiveStroke | null = null;
   /** Last `{ canUndo, canRedo, empty }` reported through `dsf-history-change`. */
   #historyState: HistoryState = { canUndo: false, canRedo: false, empty: true };
 
   constructor() {
     super();
-    const root = this.attachShadow({ mode: 'open' });
+    const root = this.attachShadow({ mode: 'open', delegatesFocus: true });
     root.innerHTML = template;
+    this.#root = root.querySelector('.root') as HTMLDivElement;
     this.#area = root.querySelector('.area') as HTMLDivElement;
     this.#ink = root.querySelector('.ink') as SVGSVGElement;
+    this.#placeholder = root.querySelector('.placeholder') as HTMLDivElement;
     this.#actions = root.querySelector('.actions') as HTMLDivElement;
-    for (const action of DEFAULT_ACTIONS) {
-      this.#actions.append(createActionButton(action, DEFAULT_ACTION_LABELS[action]));
-    }
-    this.#actions.addEventListener('click', this.#onActionClick);
-    this.#updateActionButtons();
+    this.#builtins = root.querySelector('.builtins') as HTMLDivElement;
+    this.#status = root.querySelector('.status') as HTMLDivElement;
+    this.#formField = new FormField(this, this.#area);
+    this.#builtins.addEventListener('click', this.#onActionClick);
+    this.#renderActions();
+    this.#updateEmptyState();
+    this.#syncForm();
   }
 
   attributeChangedCallback(name: string): void {
-    if (name === 'history-limit') {
-      this.#history.limit = this.historyLimit;
-      this.#syncHistoryState();
-    } else {
-      this.#render();
+    switch (name) {
+      case 'history-limit':
+        this.#history.limit = this.historyLimit;
+        this.#syncHistoryState();
+        break;
+      case 'actions':
+        this.#renderActions();
+        break;
+      case 'actions-position':
+        this.#root.dataset['position'] = this.actionsPosition;
+        break;
+      case 'pen-color':
+      case 'pen-width':
+        this.#updateActionButtons();
+        break;
+      case 'disabled':
+      case 'readonly':
+        this.#syncInteractivity();
+        break;
+      case 'required':
+      case 'min-strokes':
+        this.#syncForm();
+        break;
+      default:
+        this.#render();
     }
   }
 
@@ -143,6 +271,18 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.#area.removeEventListener('pointercancel', this.#onPointerCancel);
     this.removeEventListener('keydown', this.#onKeyDown);
     this.#active = null;
+  }
+
+  /** Called by the browser for `disabled` on the field or on an ancestor `<fieldset>`. */
+  formDisabledCallback(disabled: boolean): void {
+    this.#formDisabled = disabled;
+    this.#syncInteractivity();
+  }
+
+  /** Native form reset: back to the initial value, as a load (no `change`, fresh history). */
+  formResetCallback(): void {
+    this.#load(this.#initialState ?? EMPTY);
+    this.#formField.resetInteraction();
   }
 
   /** Strokes shorter than this (in px) are taps: discarded, no ink, no `change`. */
@@ -230,6 +370,122 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.setAttribute('history-limit', String(value));
   }
 
+  /** Form field name: the key of the value in `FormData`. */
+  get name(): string {
+    return this.getAttribute('name') ?? '';
+  }
+
+  set name(value: string) {
+    this.setAttribute('name', value);
+  }
+
+  /** The `<form>` this field belongs to, if any. */
+  get form(): HTMLFormElement | null {
+    return this.#formField.form;
+  }
+
+  /** Blocks drawing and all actions, and leaves the value out of form submission. */
+  get disabled(): boolean {
+    return this.hasAttribute('disabled');
+  }
+
+  set disabled(value: boolean) {
+    this.toggleAttribute('disabled', Boolean(value));
+  }
+
+  /** Shows the ink but blocks drawing and all actions. The value is still submitted. */
+  get readOnly(): boolean {
+    return this.hasAttribute('readonly');
+  }
+
+  set readOnly(value: boolean) {
+    this.toggleAttribute('readonly', Boolean(value));
+  }
+
+  /** `true` while the signer may not change the ink (disabled, inside a disabled fieldset, or readonly). */
+  get #locked(): boolean {
+    return this.#formDisabled || this.disabled || this.readOnly;
+  }
+
+  /** An empty field is invalid (`valueMissing`). */
+  get required(): boolean {
+    return this.hasAttribute('required');
+  }
+
+  set required(value: boolean) {
+    this.toggleAttribute('required', Boolean(value));
+  }
+
+  /** A signed field with fewer strokes than this is invalid (`tooShort`). Taps never count. */
+  get minStrokes(): number {
+    const n = Number(this.getAttribute('min-strokes'));
+    return this.hasAttribute('min-strokes') && Number.isInteger(n) && n >= 0 ? n : DEFAULT_MIN_STROKES;
+  }
+
+  set minStrokes(value: number) {
+    this.setAttribute('min-strokes', String(value));
+  }
+
+  get validity(): ValidityState {
+    return this.#formField.validity;
+  }
+
+  get validationMessage(): string {
+    return this.#formField.validationMessage;
+  }
+
+  get willValidate(): boolean {
+    return this.#formField.willValidate;
+  }
+
+  checkValidity(): boolean {
+    return this.#formField.checkValidity();
+  }
+
+  reportValidity(): boolean {
+    return this.#formField.reportValidity();
+  }
+
+  /** Space-separated built-in actions: `undo`, `redo`, `clear`, `color`, `width`, or `none` (headless mode). */
+  get actions(): string {
+    return this.getAttribute('actions') ?? DEFAULT_ACTIONS;
+  }
+
+  set actions(value: string) {
+    this.setAttribute('actions', value);
+  }
+
+  /** Where the actions bar sits. `start` and `end` are logical sides that follow `dir`. */
+  get actionsPosition(): ActionsPosition {
+    const value = this.getAttribute('actions-position')?.trim().toLowerCase();
+    return ACTIONS_POSITIONS.find((p) => p === value) ?? 'bottom';
+  }
+
+  set actionsPosition(value: ActionsPosition) {
+    this.setAttribute('actions-position', value);
+  }
+
+  /** Texts of the built-in buttons, the drawing area's name and the status messages. Unset keys stay English. */
+  get labels(): Labels {
+    return { ...this.#labels };
+  }
+
+  set labels(value: Partial<Labels> | null | undefined) {
+    this.#labels = { ...DEFAULT_LABELS, ...value };
+    this.#renderActions();
+    this.#updateEmptyState();
+  }
+
+  /** Swatches offered by the `color` action. */
+  get penColors(): string[] {
+    return [...this.#penColors];
+  }
+
+  set penColors(value: readonly string[] | null | undefined) {
+    this.#penColors = value?.length ? [...value] : DEFAULT_PEN_COLORS;
+    this.#renderActions();
+  }
+
   get canUndo(): boolean {
     return this.#history.canUndo;
   }
@@ -306,6 +562,18 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     return { size: { width: rect.width || 300, height: rect.height || 150 }, base: null, strokes: [] };
   }
 
+  /** Applies disabled / readonly: drops a stroke in progress, updates the buttons and the tab order. */
+  #syncInteractivity(): void {
+    if (this.#locked && this.#active) {
+      this.#active = null;
+      this.#render();
+    }
+    this.#area.tabIndex = this.#formDisabled ? -1 : 0;
+    if (this.#formDisabled) this.#area.setAttribute('aria-disabled', 'true');
+    else this.#area.removeAttribute('aria-disabled');
+    this.#updateActionButtons();
+  }
+
   /**
    * Loads a signature as the base layer with a fresh history, or empties the field for `null` / `''`.
    * Never fires `change`. Writing the value the field already has does nothing, so the history is kept
@@ -315,10 +583,9 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     if (this.#isCurrentValue(value)) return;
     const loaded = parseValue(value);
     if (loaded) void prepareImages(loaded);
-    this.#active = null;
-    this.#history.reset(loaded ? { size: loaded.size, base: loaded.base, strokes: [] } : EMPTY);
-    this.#render();
-    this.#syncHistoryState();
+    const state: InkState = loaded ? { size: loaded.size, base: loaded.base, strokes: [] } : EMPTY;
+    this.#initialState ??= state;
+    this.#load(state);
   }
 
   #isCurrentValue(value: unknown): boolean {
@@ -330,27 +597,69 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     return !!loaded && JSON.stringify(toData({ ...loaded, strokes: [] })) === JSON.stringify(toData(current));
   }
 
-  /** Disables each built-in button while its action would do nothing. */
+  /** Rebuilds the built-in buttons from `actions`, `labels` and `penColors`. */
+  #renderActions(): void {
+    const actions = parseActions(this.actions);
+    this.#actions.hidden = actions === null;
+    this.#builtins.replaceChildren(
+      ...(actions ?? []).map((action) =>
+        action === 'color'
+          ? createColorGroup(this.#penColors, this.#labels)
+          : action === 'width'
+            ? createWidthGroup(this.#labels)
+            : createActionButton(action, this.#labels[action]),
+      ),
+    );
+    this.#updateActionButtons();
+  }
+
+  /**
+   * Disables every built-in button while the field is disabled or readonly, and each history button while
+   * its action would do nothing. Marks the swatch and width matching the current pen as pressed.
+   */
   #updateActionButtons(): void {
+    const locked = this.#locked;
     const available: Record<HistoryAction, boolean> = {
       undo: this.canUndo,
       redo: this.canRedo,
       clear: !this.empty,
     };
-    for (const button of this.#actions.querySelectorAll<HTMLButtonElement>('button[data-action]')) {
-      button.disabled = !available[button.dataset['action'] as HistoryAction];
+    const penColor = this.penColor.toLowerCase();
+    for (const button of this.#builtins.querySelectorAll<HTMLButtonElement>('button[data-action]')) {
+      const action = button.dataset['action'];
+      const value = button.dataset['value'] ?? '';
+      if (action === 'color') {
+        button.setAttribute('aria-pressed', String(value.trim().toLowerCase() === penColor));
+        button.disabled = locked;
+      } else if (action === 'width') {
+        button.setAttribute('aria-pressed', String(Number(value) === this.penWidth));
+        button.disabled = locked;
+      } else {
+        button.disabled = locked || !available[action as HistoryAction];
+      }
     }
+  }
+
+  /** Names the drawing area, shows the placeholder while empty, and sets the text the live region announces. */
+  #updateEmptyState(): void {
+    this.#area.setAttribute('aria-label', this.#labels.drawingArea);
+    this.#placeholder.hidden = !this.empty;
+    this.#status.textContent = this.empty ? this.#labels.emptyStatus : this.#labels.signedStatus;
   }
 
   readonly #onActionClick = (e: MouseEvent): void => {
     const button = (e.target as Element).closest<HTMLButtonElement>('button[data-action]');
     if (!button || button.disabled) return;
-    this.#run(button.dataset['action'] as HistoryAction);
+    const action = button.dataset['action'];
+    const value = button.dataset['value'] ?? '';
+    if (action === 'color') this.penColor = value;
+    else if (action === 'width') this.penWidth = Number(value);
+    else this.#run(action as HistoryAction);
   };
 
   /** Ctrl/Cmd+Z undoes; Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y redo. Keydowns reach the host only while focus is inside the field. */
   readonly #onKeyDown = (e: KeyboardEvent): void => {
-    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    if (this.#locked || !(e.ctrlKey || e.metaKey) || e.altKey) return;
     const key = e.key.toLowerCase();
     const action: HistoryAction | null =
       key === 'z' ? (e.shiftKey ? 'redo' : 'undo') : key === 'y' && !e.shiftKey ? 'redo' : null;
@@ -360,6 +669,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   };
 
   #run(action: HistoryAction): void {
+    if (this.#locked) return;
     if (action === 'undo') this.undo();
     else if (action === 'redo') this.redo();
     else this.clear();
@@ -384,7 +694,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   }
 
   readonly #onPointerDown = (e: PointerEvent): void => {
-    if (this.#active || e.button !== 0) return;
+    if (this.#active || e.button !== 0 || this.#locked) return;
     e.preventDefault();
     try {
       this.#area.setPointerCapture(e.pointerId);
@@ -438,11 +748,39 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     return this.#active?.size ?? this.#history.present.size;
   }
 
+  /**
+   * Loads ink as the floor of a fresh history (the base layer, ADR-0006). Never fires `change`.
+   * The single load path: form reset uses it, and so does writing `value`.
+   */
+  #load(state: InkState): void {
+    this.#active = null;
+    this.#history.reset(state);
+    this.#render();
+    this.#syncForm();
+    this.#syncHistoryState();
+  }
+
   /** After the history moved: redraw and tell listeners about the new value. */
   #commit(): void {
     this.#render();
+    this.#syncForm();
+    this.#formField.markInteracted();
     this.dispatchEvent(new CustomEvent('change', { bubbles: true, detail: { value: this.value } }));
     this.#syncHistoryState();
+  }
+
+  /** Reports the current value and validity to the form. */
+  #syncForm(): void {
+    const value = this.value;
+    const strokeCount = this.#strokes.length;
+    this.#formField.sync({
+      // Forms submit text: signature data (`value-format="json"`) is submitted as its JSON.
+      value: value === null || typeof value === 'string' ? value : JSON.stringify(value),
+      // A loaded image cannot be counted stroke by stroke; it counts as a complete signature.
+      strokeCount: this.#history.present.base?.image ? Math.max(1, this.minStrokes, strokeCount) : strokeCount,
+      required: this.required,
+      minStrokes: this.minStrokes,
+    });
   }
 
   /** Fires `dsf-history-change` when `canUndo`, `canRedo` or `empty` differ from what was last reported. */
@@ -452,6 +790,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     if (next.canUndo === prev.canUndo && next.canRedo === prev.canRedo && next.empty === prev.empty) return;
     this.#historyState = next;
     this.#updateActionButtons();
+    this.#updateEmptyState();
     this.dispatchEvent(new CustomEvent('dsf-history-change', { bubbles: true, detail: { ...next } }));
   }
 

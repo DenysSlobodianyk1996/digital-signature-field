@@ -24,13 +24,13 @@
 | `history-limit` | `historyLimit` | `number` | `50` | Maximum number of undoable entries. |
 | `actions` | `actions` | space-separated tokens | `'undo clear'` | Tokens: `undo`, `redo`, `clear`, `color`, `width`, or `none`. |
 | `actions-position` | `actionsPosition` | `'bottom' \| 'top' \| 'start' \| 'end'` | `'bottom'` | `start` and `end` follow `dir`. |
-| — | `labels` | `Partial<Labels>` | English | `{ undo, redo, clear, color, width, drawingArea, emptyStatus, … }` |
+| — | `labels` | `Partial<Labels>` | English | `{ undo, redo, clear, color, width, thin, medium, thick, drawingArea, emptyStatus, signedStatus }`. `color` and `width` name the swatch and width groups; `thin`/`medium`/`thick` name the three widths; the status texts are announced by the live region (`status` part). Unset keys stay English. |
 | — | `penColors` | `string[]` | `['#000', '#1a3fbf']` | Swatches shown by the `color` action. |
 | — | `styles` | `string \| CSSStyleSheet \| Array<string \| CSSStyleSheet>` | — | Extra sheets added through `adoptedStyleSheets` (ADR-0007). |
 
 ### Read-only state
 
-`empty: boolean` · `canUndo: boolean` · `canRedo: boolean` · `validity` · `validationMessage` · `form`
+`empty: boolean` · `canUndo: boolean` · `canRedo: boolean` · `validity` · `validationMessage` · `willValidate` · `form`
 
 ### Methods
 
@@ -42,6 +42,7 @@
 | `toPNG(opts?: { scale?: number }): Promise<string>` | PNG data URL, `scale` (default `1`) times the drawing-area size. A `png` value is rendered at scale 1. |
 | `toJSON(): SignatureData \| null` | Lossless signature data; `null` while the field is empty. |
 | `focus()` | Focuses the drawing area. |
+| `checkValidity()` / `reportValidity()` | As on native inputs. `reportValidity()` shows the browser's validation message on the drawing area. |
 
 ### Events
 
@@ -82,7 +83,7 @@ A PNG data URL, or an SVG the field did not export, loads as a base-layer **imag
 
 **Slots:** `actions` (replaces the bar's content), `actions-start`, `actions-end`, `placeholder` (shown in the drawing area while the field is empty).
 
-**State selectors:** `:state(empty)`, `:state(invalid)`, `:state(drawing)`, plus `[disabled]` and `[readonly]` on the host.
+**State selectors:** `:state(empty)`, `:state(invalid)`, `:state(drawing)`, plus `[disabled]` and `[readonly]` on the host. `:state(invalid)` is only set once the user has interacted with the field (a stroke, undo, redo, clear, or focus leaving it) or a submit was attempted, like `:user-invalid`; a form reset hides it again. `:disabled` also matches inside a disabled `<fieldset>`.
 
 ## `@digital-signature-field/angular`
 

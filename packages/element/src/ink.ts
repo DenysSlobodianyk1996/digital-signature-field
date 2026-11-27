@@ -1,6 +1,3 @@
-import { escapeAttr, round, toSvgMarkup, type RenderOptions } from './render';
-import { signatureDataMarkup, toSignatureData } from './value';
-
 /** One sampled pen position, in drawing-area coordinates. */
 export interface Point {
   x: number;
@@ -30,34 +27,4 @@ export function strokeLength(stroke: Stroke): number {
     length += Math.hypot(b.x - a.x, b.y - a.y);
   }
   return length;
-}
-
-/** A standalone SVG document for the strokes, with a `viewBox` so it scales. It embeds the signature data, so it reloads stroke for stroke. */
-export function toSvgDocument(
-  strokes: readonly Stroke[],
-  size: Size,
-  options: RenderOptions,
-  background = '#fff',
-): string {
-  const w = round(size.width);
-  const h = round(size.height);
-  const bg = background === 'transparent' ? '' : `<rect width="100%" height="100%" fill="${escapeAttr(background)}"/>`;
-  return (
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">` +
-    signatureDataMarkup(toSignatureData(strokes, size)) +
-    bg +
-    toSvgMarkup(strokes, options) +
-    `</svg>`
-  );
-}
-
-function base64(text: string): string {
-  const bytes = new TextEncoder().encode(text);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
-export function toSvgDataUrl(strokes: readonly Stroke[], size: Size, options: RenderOptions): string {
-  return `data:image/svg+xml;base64,${base64(toSvgDocument(strokes, size, options))}`;
 }

@@ -14,8 +14,8 @@ const stateOf = (el: DigitalSignatureFieldElement): HistoryState => ({
   empty: el.empty,
 });
 
-const lines = (value: string | null): number => (value ? exportedStrokes(value).length : 0);
-const viewBox = (value: string | null): string | null => (value ? decodeSvg(value).documentElement.getAttribute('viewBox') : null);
+const lines = (value: unknown): number => (value ? exportedStrokes(value).length : 0);
+const viewBox = (value: unknown): string | null => (value ? decodeSvg(value).documentElement.getAttribute('viewBox') : null);
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -28,7 +28,7 @@ function exportedValue(): string {
   source.penColor = '#f00';
   source.penWidth = 5;
   draw(source, [[10, 50], [60, 50]]);
-  const value = source.value!;
+  const value = source.value as string;
   source.remove();
   return value;
 }

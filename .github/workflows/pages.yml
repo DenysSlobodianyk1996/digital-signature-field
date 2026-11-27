@@ -1,7 +1,7 @@
 name: Deploy demos to GitHub Pages
 
-# ADR-0010: the four demo apps, each built under its own sub-path, deployed as one Pages site:
-# https://denysslobodianyk1996.github.io/digital-signature-field/{angular,angular-17,react,vue}/
+# ADR-0010: the five demo apps, each built under its own sub-path, deployed as one Pages site:
+# https://denysslobodianyk1996.github.io/digital-signature-field/{angular,angular-17,react,vue,html}/
 on:
   push:
     branches: [main]

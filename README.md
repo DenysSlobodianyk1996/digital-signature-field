@@ -22,8 +22,9 @@ A hand-drawn signature as a real form field: a framework-free web component (`<d
 | Angular 17 — CVA mode | [https://denysslobodianyk1996.github.io/digital-signature-field/angular-17/](https://denysslobodianyk1996.github.io/digital-signature-field/angular-17/) | [`apps/demo-angular-17`](apps/demo-angular-17) |
 | React 19 | [https://denysslobodianyk1996.github.io/digital-signature-field/react/](https://denysslobodianyk1996.github.io/digital-signature-field/react/) | [`apps/demo-react`](apps/demo-react) |
 | Vue 3 | [https://denysslobodianyk1996.github.io/digital-signature-field/vue/](https://denysslobodianyk1996.github.io/digital-signature-field/vue/) | [`apps/demo-vue`](apps/demo-vue) |
+| Plain HTML + JS — no framework, no bundler | [https://denysslobodianyk1996.github.io/digital-signature-field/html/](https://denysslobodianyk1996.github.io/digital-signature-field/html/) | [`apps/demo-html`](apps/demo-html) |
 
-All four are deployed as one GitHub Pages site ([index](https://denysslobodianyk1996.github.io/digital-signature-field/)) on every push to `main` (`.github/workflows/pages.yml`, ADR-0010).
+All five are deployed as one GitHub Pages site ([index](https://denysslobodianyk1996.github.io/digital-signature-field/)) on every push to `main` (`.github/workflows/pages.yml`, ADR-0010).
 
 ## Packages
 
@@ -64,6 +65,8 @@ npm i @digital-signature-field/element
 ```
 
 No bundler? Load it from a CDN: `<script type="module" src="https://cdn.jsdelivr.net/npm/@digital-signature-field/element@1/+esm"></script>`.
+
+Full demo: [`apps/demo-html`](apps/demo-html).
 
 ### Angular
 
@@ -282,13 +285,13 @@ Nx + pnpm monorepo:
 
 ```
 packages/element      packages/angular
-apps/demo-angular     apps/demo-angular-17     apps/demo-react     apps/demo-vue
-apps/site              # GitHub Pages site: assembles the four demos under their sub-paths
+apps/demo-angular     apps/demo-angular-17     apps/demo-react     apps/demo-vue     apps/demo-html
+apps/site              # GitHub Pages site: assembles the five demos under their sub-paths
 ```
 
 ```bash
 pnpm install
-pnpm nx serve demo-angular        # or demo-react / demo-vue / demo-angular-17
+pnpm nx serve demo-angular        # or demo-react / demo-vue / demo-angular-17 / demo-html
 pnpm nx run-many -t test e2e
 pnpm nx e2e-pages site            # build the Pages site into apps/site/dist and check it
 pnpm nx run-many -t pack          # npm pack --dry-run: what each package would publish

@@ -20,6 +20,6 @@ Five ways to present and drive the signature field. Variants 1–4 are **one ele
 
 ## Recommendation
 
-Ship **variant 1 as the default**, and make 2, 3 and 4 reachable purely through the `actions` / `actions-position` settings, so they cost no extra components. Document variant 5 as a recipe in `demo-angular`, `demo-react` and `demo-vue`.
+Ship **variant 1 as the default**, and make 2, 3 and 4 reachable purely through the `actions` / `actions-position` settings, so they cost no extra components. Document variant 5 as a recipe in `demo-angular`, `demo-react`, `demo-vue` and `demo-html`.
 
 Every variant page assumes the package is installed and registered as shown in the [README](../../README.md#install).

@@ -12,12 +12,17 @@ const out = fileURLToPath(new URL('../dist/', import.meta.url));
 // Where GitHub Pages serves the project site (https://<owner>.github.io/<repo>/). Must end in `/`.
 const siteBase = process.env.DSF_SITE_BASE ?? '/digital-signature-field/';
 
-/** Pages sub-path -> Nx project and its build output (the directory holding index.html). */
+/**
+ * Pages sub-path -> Nx project and its build output (the directory holding index.html).
+ * `baseElement`: the page loads its files by relative URL and has no `<base>` of its own, so it gets
+ * one: after a deep link's URL is restored, relative URLs must still resolve against the demo root.
+ */
 const demos = [
   { path: 'angular', project: 'demo-angular', dist: 'apps/demo-angular/dist/browser' },
   { path: 'angular-17', project: 'demo-angular-17', dist: 'apps/demo-angular-17/dist/browser' },
   { path: 'react', project: 'demo-react', dist: 'apps/demo-react/dist' },
   { path: 'vue', project: 'demo-vue', dist: 'apps/demo-vue/dist' },
+  { path: 'html', project: 'demo-html', dist: 'apps/demo-html/dist', baseElement: true },
 ];
 
 // Runs first in every demo page: restores the deep link that 404.html folded into `?dsf-route=`,
@@ -39,7 +44,8 @@ for (const demo of demos) {
   const index = `${target}/index.html`;
   const html = await readFile(index, 'utf8');
   if (!html.includes('<head>')) throw new Error(`${demo.project}: no <head> in ${index}`);
-  await writeFile(index, html.replace('<head>', `<head>\n    ${restoreRoute}`));
+  const head = demo.baseElement ? `<base href="${base}" />\n    ${restoreRoute}` : restoreRoute;
+  await writeFile(index, html.replace('<head>', `<head>\n    ${head}`));
 }
 
 const fill = (html) =>

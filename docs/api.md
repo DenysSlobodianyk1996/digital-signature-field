@@ -55,7 +55,7 @@
 
 ### Type exports
 
-`DigitalSignatureFieldElement` (the element class), `SignatureData`, `Labels`, `ValueFormat`. The subpath `@digital-signature-field/element/jsx-react` adds the tag to React's `JSX.IntrinsicElements`. Vue users declare it in `GlobalComponents` (recipe in the demo).
+`DigitalSignatureFieldElement` (the element class), `SignatureData`, `Labels`, `ValueFormat`, `Styles`. The subpath `@digital-signature-field/element/jsx-react` adds the tag to React's `JSX.IntrinsicElements`. Vue users declare it in `GlobalComponents` (recipe in the demo).
 
 ### `SignatureData`
 

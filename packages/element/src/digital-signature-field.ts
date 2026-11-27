@@ -14,6 +14,7 @@ import {
 } from './actions';
 import { FormField } from './form';
 import { History } from './history';
+import { STYLING_CSS, toStyleSheets, type Styles } from './styles';
 import { strokeLength, toSvgDataUrl, type Point, type Size, type Stroke } from './ink';
 import { toSvgMarkup, type RenderOptions } from './render';
 import { parseValue, toSignatureData, type BaseLayer, type SignatureData } from './value';
@@ -83,7 +84,7 @@ const template = `
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #9ca3af;
+    color: #6b7280;
     pointer-events: none;
   }
   .placeholder[hidden] {
@@ -101,9 +102,11 @@ const template = `
     white-space: nowrap;
   }
   ${ACTIONS_CSS}
+  ${STYLING_CSS}
 </style>
 <div part="root" class="root" data-position="bottom">
   <div part="area" class="area" tabindex="0" role="img">
+    <div part="guide" class="guide" aria-hidden="true"></div>
     <svg part="ink" class="ink" xmlns="${SVG_NS}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
     <div class="placeholder"><slot name="placeholder"></slot></div>
   </div>
@@ -177,6 +180,10 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   readonly #status: HTMLDivElement;
   readonly #formField: FormField;
 
+  /** The `styles` value, and the sheets adopted for it (after the built-in styles). */
+  #styles: Styles | null = null;
+  #injectedSheets: CSSStyleSheet[] = [];
+
   #labels: Labels = DEFAULT_LABELS;
   #penColors: readonly string[] = DEFAULT_PEN_COLORS;
 
@@ -244,6 +251,11 @@ export class DigitalSignatureFieldElement extends HTMLElement {
       delete (this as { value?: unknown }).value;
       this.value = value as string | SignatureData | null;
     }
+    if (Object.hasOwn(this, 'styles')) {
+      const styles: unknown = (this as { styles?: unknown }).styles;
+      delete (this as { styles?: unknown }).styles;
+      this.styles = styles as Styles | null;
+    }
     this.#area.addEventListener('pointerdown', this.#onPointerDown);
     this.#area.addEventListener('pointermove', this.#onPointerMove);
     this.#area.addEventListener('pointerup', this.#onPointerUp);
@@ -257,7 +269,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.#area.removeEventListener('pointerup', this.#onPointerUp);
     this.#area.removeEventListener('pointercancel', this.#onPointerCancel);
     this.removeEventListener('keydown', this.#onKeyDown);
-    this.#active = null;
+    this.#setActive(null);
   }
 
   /** Called by the browser for `disabled` on the field or on an ancestor `<fieldset>`. */
@@ -450,6 +462,23 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.#renderActions();
   }
 
+  /**
+   * Extra style sheets, adopted after the built-in styles (ADR-0007). Setting it again replaces the
+   * previously injected sheets; `null` removes them. Selectors inside the shadow root are not covered by semver.
+   */
+  get styles(): Styles | null {
+    return this.#styles;
+  }
+
+  set styles(value: Styles | null | undefined) {
+    const sheets = toStyleSheets(value);
+    const root = this.shadowRoot!;
+    const previous = new Set(this.#injectedSheets);
+    root.adoptedStyleSheets = [...root.adoptedStyleSheets.filter((s) => !previous.has(s)), ...sheets];
+    this.#injectedSheets = sheets;
+    this.#styles = value ?? null;
+  }
+
   get canUndo(): boolean {
     return this.#history.canUndo;
   }
@@ -490,7 +519,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   /** Applies disabled / readonly: drops a stroke in progress, updates the buttons and the tab order. */
   #syncInteractivity(): void {
     if (this.#locked && this.#active) {
-      this.#active = null;
+      this.#setActive(null);
       this.#render();
     }
     this.#area.tabIndex = this.#formDisabled ? -1 : 0;
@@ -625,12 +654,13 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     }
     const rect = this.#area.getBoundingClientRect();
     const size = (!this.empty && this.#history.present.size) || { width: rect.width, height: rect.height };
-    this.#active = {
+    const active: ActiveStroke = {
       pointerId: e.pointerId,
       stroke: { color: this.penColor, width: this.penWidth, points: [] },
       size,
     };
-    this.#active.stroke.points.push(this.#point(e));
+    this.#setActive(active);
+    active.stroke.points.push(this.#point(e));
     this.#render();
   };
 
@@ -643,7 +673,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   readonly #onPointerUp = (e: PointerEvent): void => {
     if (!this.#active || e.pointerId !== this.#active.pointerId) return;
     const { stroke, size } = this.#active;
-    this.#active = null;
+    this.#setActive(null);
     if (strokeLength(stroke) < this.minStrokeLength) {
       this.#render();
       return;
@@ -655,9 +685,15 @@ export class DigitalSignatureFieldElement extends HTMLElement {
 
   readonly #onPointerCancel = (e: PointerEvent): void => {
     if (!this.#active || e.pointerId !== this.#active.pointerId) return;
-    this.#active = null;
+    this.#setActive(null);
     this.#render();
   };
+
+  /** Starts or ends the stroke in progress; `:state(drawing)` matches while there is one. */
+  #setActive(active: ActiveStroke | null): void {
+    this.#active = active;
+    this.#formField.drawing = active !== null;
+  }
 
   /** All ink: the base layer's strokes, then the strokes drawn on top. */
   get #strokes(): readonly Stroke[] {
@@ -675,7 +711,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
    * The single load path: form reset uses it, and so does writing `value`.
    */
   #load(state: InkState): void {
-    this.#active = null;
+    this.#setActive(null);
     this.#history.reset(state);
     this.#render();
     this.#syncForm();

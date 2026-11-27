@@ -4,7 +4,7 @@ A hand-drawn signature as a form field: a framework-free custom element (`@digit
 
 ## Development
 
-Nx 24 + pnpm 10 workspace (Node >= 22). Projects: `packages/element` (`element`), `packages/angular` (`angular`, built with ng-packagr against Angular 17.2 / TS 5.3), `apps/demo-angular` (`demo-angular`, latest Angular), `apps/demo-angular-17` (`demo-angular-17`, Angular 17 / TS 5.3), `apps/demo-react` (`demo-react`, React 19 + Vite) and `apps/demo-vue` (`demo-vue`, Vue 3 + Vite) (ADR-0002). Targets are explicit `nx:run-commands` in each `project.json`.
+Nx 24 + pnpm 10 workspace (Node >= 22). Projects: `packages/element` (`element`), `packages/angular` (`angular`, built with ng-packagr against Angular 17.2 / TS 5.3), `apps/demo-angular` (`demo-angular`, latest Angular), `apps/demo-angular-17` (`demo-angular-17`, Angular 17 / TS 5.3), `apps/demo-react` (`demo-react`, React 19 + Vite) and `apps/demo-vue` (`demo-vue`, Vue 3 + Vite) (ADR-0002), and `apps/site` (`site`, the GitHub Pages site that assembles the four demo builds; deployed by `.github/workflows/pages.yml` on push to `main`, ADR-0010). Targets are explicit `nx:run-commands` in each `project.json`.
 
 ```bash
 pnpm install                                  # first run also: pnpm exec playwright install chromium firefox webkit
@@ -17,7 +17,9 @@ DSF_BROWSERS=chromium,webkit pnpm nx test element   # narrow the browsers locall
 pnpm nx run-many -t e2e                       # Playwright smoke tests on the built demo apps (seam 3)
 pnpm nx serve demo-angular                    # ng serve (demo-angular-17 serves on :4201)
 pnpm nx serve demo-react                      # or demo-vue: Vite dev server on the built element package
-DSF_DEMO_BASE=/react/ pnpm nx build demo-react # React/Vue demos build under a sub-path (must end in /)
+DSF_DEMO_BASE=/react/ pnpm nx build demo-react # any demo builds under a sub-path (must end in /; Angular: --base-href)
+pnpm nx e2e-pages site                        # GitHub Pages site: all demos under their sub-paths in apps/site/dist, checked by Playwright
+pnpm nx preview-pages site                    # serve it like GitHub Pages at http://localhost:4390/digital-signature-field/
 pnpm nx affected -t lint typecheck build test e2e   # what CI runs (.github/workflows/ci.yml)
 ```
 

@@ -220,6 +220,12 @@ importers:
         specifier: ^3.3.14
         version: 3.3.14(typescript@6.0.3)
 
+  apps/site:
+    devDependencies:
+      '@playwright/test':
+        specifier: 1.65.1
+        version: 1.65.1
+
   packages/angular:
     dependencies:
       '@digital-signature-field/element':

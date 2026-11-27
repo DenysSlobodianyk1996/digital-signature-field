@@ -1,0 +1,51 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "site",
+  "projectType": "application",
+  "sourceRoot": "apps/site/src",
+  "tags": ["scope:demo"],
+  "//": "build-pages / e2e-pages are deliberately not named build / e2e: they rebuild the four demo apps under their Pages sub-paths, which must not race the apps' own build/e2e tasks in `nx affected`.",
+  "targets": {
+    "build-pages": {
+      "executor": "nx:run-commands",
+      "outputs": ["{projectRoot}/dist"],
+      "cache": false,
+      "options": {
+        "cwd": "{projectRoot}",
+        "command": "node scripts/build-pages.mjs"
+      }
+    },
+    "e2e-pages": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build-pages"],
+      "cache": false,
+      "options": {
+        "cwd": "{projectRoot}",
+        "command": "playwright test"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "{projectRoot}",
+        "command": "tsc -p tsconfig.json"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "{projectRoot}",
+        "command": "eslint ."
+      }
+    },
+    "preview-pages": {
+      "executor": "nx:run-commands",
+      "continuous": true,
+      "dependsOn": ["build-pages"],
+      "options": {
+        "cwd": "{projectRoot}",
+        "command": "node e2e/pages-server.mjs"
+      }
+    }
+  }
+}

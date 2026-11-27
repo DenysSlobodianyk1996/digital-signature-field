@@ -1,3 +1,5 @@
+import { ACTIONS_CSS, createActionButton, DEFAULT_ACTION_LABELS, DEFAULT_ACTIONS, type HistoryAction } from './actions';
+import { History } from './history';
 import { strokeLength, toSvgDataUrl, toSvgMarkup, type Point, type Stroke } from './ink';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -27,13 +29,27 @@ const template = `
     display: block;
     pointer-events: none;
   }
+  ${ACTIONS_CSS}
 </style>
 <div part="root" class="root">
-  <div part="area" class="area">
+  <div part="area" class="area" tabindex="0" role="img" aria-label="Signature drawing area">
     <svg part="ink" class="ink" xmlns="${SVG_NS}" preserveAspectRatio="none" aria-hidden="true"></svg>
   </div>
+  <div part="actions" class="actions"></div>
 </div>
 `;
+
+/** What the history records: one immutable snapshot of the ink per entry. */
+interface InkState {
+  strokes: readonly Stroke[];
+}
+
+/** Detail of `dsf-history-change`. */
+export interface HistoryState {
+  canUndo: boolean;
+  canRedo: boolean;
+  empty: boolean;
+}
 
 interface ActiveStroke {
   pointerId: number;
@@ -41,16 +57,20 @@ interface ActiveStroke {
 }
 
 const DEFAULT_MIN_STROKE_LENGTH = 8;
+const DEFAULT_HISTORY_LIMIT = 50;
 
 export class DigitalSignatureFieldElement extends HTMLElement {
   readonly #area: HTMLDivElement;
   readonly #ink: SVGSVGElement;
+  readonly #actions: HTMLDivElement;
 
-  /** Kept strokes, in drawing-area coordinates. The SVG is always redrawn from this. */
-  #strokes: Stroke[] = [];
+  /** Kept strokes (in drawing-area coordinates) and their undo/redo history. The SVG is always redrawn from this. */
+  readonly #history = new History<InkState>({ strokes: [] }, DEFAULT_HISTORY_LIMIT);
   /** Drawing-area size the strokes are stored in; set when the first stroke starts. */
   #size: { width: number; height: number } | null = null;
   #active: ActiveStroke | null = null;
+  /** Last `{ canUndo, canRedo, empty }` reported through `dsf-history-change`. */
+  #historyState: HistoryState = { canUndo: false, canRedo: false, empty: true };
 
   constructor() {
     super();
@@ -58,6 +78,23 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     root.innerHTML = template;
     this.#area = root.querySelector('.area') as HTMLDivElement;
     this.#ink = root.querySelector('.ink') as SVGSVGElement;
+    this.#actions = root.querySelector('.actions') as HTMLDivElement;
+    for (const action of DEFAULT_ACTIONS) {
+      this.#actions.append(createActionButton(action, DEFAULT_ACTION_LABELS[action]));
+    }
+    this.#actions.addEventListener('click', this.#onActionClick);
+    this.#updateActionButtons();
+  }
+
+  static get observedAttributes(): string[] {
+    return ['history-limit'];
+  }
+
+  attributeChangedCallback(name: string): void {
+    if (name === 'history-limit') {
+      this.#history.limit = this.historyLimit;
+      this.#syncHistoryState();
+    }
   }
 
   connectedCallback(): void {
@@ -65,6 +102,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.#area.addEventListener('pointermove', this.#onPointerMove);
     this.#area.addEventListener('pointerup', this.#onPointerUp);
     this.#area.addEventListener('pointercancel', this.#onPointerCancel);
+    this.addEventListener('keydown', this.#onKeyDown);
   }
 
   disconnectedCallback(): void {
@@ -72,6 +110,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.#area.removeEventListener('pointermove', this.#onPointerMove);
     this.#area.removeEventListener('pointerup', this.#onPointerUp);
     this.#area.removeEventListener('pointercancel', this.#onPointerCancel);
+    this.removeEventListener('keydown', this.#onKeyDown);
     this.#active = null;
   }
 
@@ -85,10 +124,85 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.setAttribute('min-stroke-length', String(value));
   }
 
+  /** Maximum number of undoable entries (strokes and clears). Older entries are dropped first. */
+  get historyLimit(): number {
+    const n = Number(this.getAttribute('history-limit'));
+    return this.hasAttribute('history-limit') && Number.isInteger(n) && n >= 0 ? n : DEFAULT_HISTORY_LIMIT;
+  }
+
+  set historyLimit(value: number) {
+    this.setAttribute('history-limit', String(value));
+  }
+
+  get canUndo(): boolean {
+    return this.#history.canUndo;
+  }
+
+  get canRedo(): boolean {
+    return this.#history.canRedo;
+  }
+
+  /** Removes the last stroke, or reverts the last clear. Fires `change` when something was undone. */
+  undo(): void {
+    if (this.#history.undo()) this.#commit();
+  }
+
+  /** Re-applies the most recently undone entry. Fires `change` when something was redone. */
+  redo(): void {
+    if (this.#history.redo()) this.#commit();
+  }
+
+  /** Removes all ink as one undoable entry. Does nothing while the field is empty. */
+  clear(): void {
+    if (this.empty) return;
+    this.#history.push({ strokes: [] });
+    this.#commit();
+  }
+
+  /** `true` while there is no ink. */
+  get empty(): boolean {
+    return this.#strokes.length === 0;
+  }
+
   /** The signature as an SVG data URL, or `null` while the field is empty. */
   get value(): string | null {
     if (this.#strokes.length === 0 || !this.#size) return null;
     return toSvgDataUrl(this.#strokes, this.#size);
+  }
+
+  /** Disables each built-in button while its action would do nothing. */
+  #updateActionButtons(): void {
+    const available: Record<HistoryAction, boolean> = {
+      undo: this.canUndo,
+      redo: this.canRedo,
+      clear: !this.empty,
+    };
+    for (const button of this.#actions.querySelectorAll<HTMLButtonElement>('button[data-action]')) {
+      button.disabled = !available[button.dataset['action'] as HistoryAction];
+    }
+  }
+
+  readonly #onActionClick = (e: MouseEvent): void => {
+    const button = (e.target as Element).closest<HTMLButtonElement>('button[data-action]');
+    if (!button || button.disabled) return;
+    this.#run(button.dataset['action'] as HistoryAction);
+  };
+
+  /** Ctrl/Cmd+Z undoes; Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y redo. Keydowns reach the host only while focus is inside the field. */
+  readonly #onKeyDown = (e: KeyboardEvent): void => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const key = e.key.toLowerCase();
+    const action: HistoryAction | null =
+      key === 'z' ? (e.shiftKey ? 'redo' : 'undo') : key === 'y' && !e.shiftKey ? 'redo' : null;
+    if (!action) return;
+    e.preventDefault();
+    this.#run(action);
+  };
+
+  #run(action: HistoryAction): void {
+    if (action === 'undo') this.undo();
+    else if (action === 'redo') this.redo();
+    else this.clear();
   }
 
   #point(e: PointerEvent): Point {
@@ -134,9 +248,8 @@ export class DigitalSignatureFieldElement extends HTMLElement {
       this.#render();
       return;
     }
-    this.#strokes = [...this.#strokes, stroke];
-    this.#render();
-    this.dispatchEvent(new CustomEvent('change', { bubbles: true, detail: { value: this.value } }));
+    this.#history.push({ strokes: [...this.#strokes, stroke] });
+    this.#commit();
   };
 
   readonly #onPointerCancel = (e: PointerEvent): void => {
@@ -144,6 +257,27 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.#active = null;
     this.#render();
   };
+
+  get #strokes(): readonly Stroke[] {
+    return this.#history.present.strokes;
+  }
+
+  /** After the history moved: redraw and tell listeners about the new value. */
+  #commit(): void {
+    this.#render();
+    this.dispatchEvent(new CustomEvent('change', { bubbles: true, detail: { value: this.value } }));
+    this.#syncHistoryState();
+  }
+
+  /** Fires `dsf-history-change` when `canUndo`, `canRedo` or `empty` differ from what was last reported. */
+  #syncHistoryState(): void {
+    const next: HistoryState = { canUndo: this.canUndo, canRedo: this.canRedo, empty: this.empty };
+    const prev = this.#historyState;
+    if (next.canUndo === prev.canUndo && next.canRedo === prev.canRedo && next.empty === prev.empty) return;
+    this.#historyState = next;
+    this.#updateActionButtons();
+    this.dispatchEvent(new CustomEvent('dsf-history-change', { bubbles: true, detail: { ...next } }));
+  }
 
   #render(): void {
     const strokes = this.#active ? [...this.#strokes, this.#active.stroke] : this.#strokes;

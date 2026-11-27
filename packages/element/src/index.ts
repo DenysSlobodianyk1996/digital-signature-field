@@ -1,6 +1,7 @@
 import { DigitalSignatureFieldElement } from './digital-signature-field';
 
 export { DigitalSignatureFieldElement };
+export type { HistoryState } from './digital-signature-field';
 
 declare global {
   interface HTMLElementTagNameMap {

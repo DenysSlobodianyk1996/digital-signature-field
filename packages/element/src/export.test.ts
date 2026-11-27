@@ -382,6 +382,24 @@ describe('in a form', () => {
     });
   });
 
+  const settingChanges: Array<[string, (el: DigitalSignatureFieldElement) => void]> = [
+    ['value-format', (el) => (el.valueFormat = 'json')],
+    ['background', (el) => (el.background = '#abcdef')],
+    ['smoothing', (el) => (el.smoothing = 0)],
+    ['pressure', (el) => (el.pressure = true)],
+  ];
+  it.each(settingChanges)('changing %s updates the submitted value, without firing change', (_, change) => {
+    const { form, el } = inForm({});
+    draw(el, [[10, 10], [60, 30], [90, 10]], { pressures: [0.2, 0.9, 0.4] });
+    const before = new FormData(form).get('signature');
+    const seen = changeDetails(el);
+    change(el);
+    const after = new FormData(form).get('signature');
+    expect(after).not.toBe(before);
+    expect(after).toBe(typeof el.value === 'string' ? el.value : JSON.stringify(el.value));
+    expect(seen).toEqual([]);
+  });
+
   it('a loaded image satisfies required and min-strokes', () => {
     const { el } = inForm({ required: '', 'min-strokes': '3' });
     expect(el.checkValidity()).toBe(false);

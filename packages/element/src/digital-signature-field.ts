@@ -206,6 +206,8 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     'readonly',
     'required',
     'min-strokes',
+    'value-format',
+    'background',
   ];
 
   readonly #root: HTMLDivElement;
@@ -273,12 +275,17 @@ export class DigitalSignatureFieldElement extends HTMLElement {
       case 'readonly':
         this.#syncInteractivity();
         break;
+      // `value-format` and `background` shape the serialized value: the form gets the new value, with no
+      // `change` (the next one uses it).
       case 'required':
       case 'min-strokes':
+      case 'value-format':
+      case 'background':
         this.#syncForm();
         break;
-      default:
+      default: // smoothing, pressure: the ink and the value both change.
         this.#render();
+        this.#syncForm();
     }
   }
 

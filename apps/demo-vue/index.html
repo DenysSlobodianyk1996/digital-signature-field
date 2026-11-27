@@ -7,6 +7,14 @@
   </head>
   <body>
     <main>
+      <a class="all-demos" href="https://github.com/DenysSlobodianyk1996/digital-signature-field#demos"><span aria-hidden="true">←</span> All demos</a>
+      <script>
+        // On GitHub Pages each demo lives at <site>/<demo>/, so the demos index is one level up from the
+        // demo's base. Served at the root (local dev) there is no index: the link keeps the README's demo list.
+        (function (link, base) {
+          if (base !== '/') link.href = new URL('../', new URL(base, location.href)).pathname;
+        })(document.currentScript.previousElementSibling, '%BASE_URL%');
+      </script>
       <h1>digital-signature-field · Vue 3</h1>
       <div id="app"></div>
     </main>

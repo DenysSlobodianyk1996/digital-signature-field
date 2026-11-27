@@ -4,7 +4,7 @@
   "projectType": "application",
   "sourceRoot": "apps/site/src",
   "tags": ["scope:demo"],
-  "//": "build-pages / e2e-pages are deliberately not named build / e2e: they rebuild the four demo apps under their Pages sub-paths, which must not race the apps' own build/e2e tasks in `nx affected`.",
+  "//": "build-pages / e2e-pages are deliberately not named build / e2e: they rebuild the demo apps under their Pages sub-paths, which must not race the apps' own build/e2e tasks in `nx affected`.",
   "targets": {
     "build-pages": {
       "executor": "nx:run-commands",

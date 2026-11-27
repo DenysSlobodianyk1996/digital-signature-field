@@ -97,3 +97,10 @@ dialog > h3 {
 .fancy-signature::part(action) {
   border-radius: 999px;
 }
+
+/* "← All demos": back to the GitHub Pages index (or the README's demo list when served at the root). */
+.all-demos {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: #1d4ed8;
+}

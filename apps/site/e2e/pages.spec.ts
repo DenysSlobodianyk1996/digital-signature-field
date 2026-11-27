@@ -6,6 +6,7 @@ const demos = [
   { path: 'angular-17', link: 'Angular 17', heading: 'digital-signature-field · Angular 17' },
   { path: 'react', link: 'React 19', heading: 'digital-signature-field · React 19' },
   { path: 'vue', link: 'Vue 3', heading: 'digital-signature-field · Vue 3' },
+  { path: 'html', link: 'HTML', heading: 'digital-signature-field · HTML' },
 ];
 
 /**
@@ -28,7 +29,7 @@ async function expectDemo(page: Page, heading: string): Promise<void> {
   await expect(page.locator('digital-signature-field [part~="area"]').first()).toBeVisible();
 }
 
-test('the site root links all four demos', async ({ page }) => {
+test('the site root links every demo', async ({ page }) => {
   await page.goto('./');
   for (const demo of demos) {
     await expect(page.getByRole('link', { name: demo.link, exact: true })).toHaveAttribute('href', `${demo.path}/`);
@@ -54,6 +55,18 @@ for (const demo of demos) {
         `/digital-signature-field/${demo.path}/some/deep/route?tab=2#sign`,
       );
       expect(failed).toEqual([]);
+    });
+
+    test('"All demos" goes back to the site root, from a deep link too', async ({ page }) => {
+      for (const path of [`./${demo.path}/`, `./${demo.path}/some/deep/route`]) {
+        await page.goto(path);
+        await expectDemo(page, demo.heading);
+        const back = page.getByRole('link', { name: 'All demos' });
+        await expect(back).toHaveAttribute('href', '/digital-signature-field/');
+        await back.click();
+        await expect(page).toHaveURL(/\/digital-signature-field\/$/);
+        await expect(page.getByRole('heading', { level: 1, name: 'digital-signature-field · demos' })).toBeVisible();
+      }
     });
 
     test('refreshing a deep link still loads the demo', async ({ page }) => {

@@ -9,6 +9,20 @@ export function signatureField(root: Element): DigitalSignatureFieldElement {
   return el;
 }
 
+/**
+ * Waits until the wrapper has loaded and upgraded the element (it does that in the browser after the
+ * first render, never on the server) and Angular is stable again. Test bodies run outside the
+ * Angular zone, so this also runs change detection for changes the test made.
+ */
+export async function settle(fixture: { whenStable(): Promise<unknown>; detectChanges(): void }): Promise<void> {
+  fixture.detectChanges();
+  await fixture.whenStable();
+  await customElements.whenDefined('digital-signature-field');
+  await new Promise((resolve) => setTimeout(resolve));
+  fixture.detectChanges();
+  await fixture.whenStable();
+}
+
 /** Sends a synthetic pointer stroke (down, moves, up) to the field's drawing area, in area coordinates. */
 export function draw(field: HTMLElement, points: Point[] = [[10, 10], [60, 30], [120, 40]]): void {
   const area = field.shadowRoot?.querySelector<HTMLElement>('[part~="area"]');
@@ -34,6 +48,15 @@ export function draw(field: HTMLElement, points: Point[] = [[10, 10], [60, 30], 
   send('pointerdown', first!);
   for (const p of rest) send('pointermove', p);
   send('pointerup', points[points.length - 1]!);
+}
+
+/** Moves focus into the field, then out of it to another input. */
+export function focusAndLeave(field: HTMLElement): void {
+  const other = document.createElement('input');
+  document.body.append(other);
+  field.focus();
+  other.focus();
+  other.remove();
 }
 
 export const SVG_DATA_URL = /^data:image\/svg\+xml;base64,/;

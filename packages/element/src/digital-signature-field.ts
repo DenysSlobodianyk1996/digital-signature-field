@@ -156,6 +156,8 @@ interface ActiveStroke {
   stroke: Stroke;
   /** Size the stroke is drawn in: the ink's size, or the area's size when the stroke starts on an empty field. */
   size: Size;
+  /** Set once the stroke is long enough to be kept, when `dsf-stroke-start` has fired. */
+  started: boolean;
 }
 
 const DEFAULT_MIN_STROKE_LENGTH = 8;
@@ -744,6 +746,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
       pointerId: e.pointerId,
       stroke: { color: this.penColor, width: this.penWidth, points: [] },
       size,
+      started: false,
     };
     this.#setActive(active);
     active.stroke.points.push(this.#point(e));
@@ -753,21 +756,32 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   readonly #onPointerMove = (e: PointerEvent): void => {
     if (!this.#active || e.pointerId !== this.#active.pointerId) return;
     this.#active.stroke.points.push(this.#point(e));
+    if (!this.#active.started && strokeLength(this.#active.stroke) >= this.minStrokeLength) {
+      this.#active.started = true;
+      this.#dispatchStroke('dsf-stroke-start', this.#strokes.length + 1);
+    }
     this.#render();
   };
 
   readonly #onPointerUp = (e: PointerEvent): void => {
     if (!this.#active || e.pointerId !== this.#active.pointerId) return;
-    const { stroke, size } = this.#active;
+    const { stroke, size, started } = this.#active;
     this.#setActive(null);
     if (strokeLength(stroke) < this.minStrokeLength) {
       this.#render();
       return;
     }
+    if (!started) this.#dispatchStroke('dsf-stroke-start', this.#strokes.length + 1);
     const { base, strokes } = this.#history.present;
     this.#history.push({ size, base, strokes: [...strokes, stroke] });
     this.#commit();
+    this.#dispatchStroke('dsf-stroke-end', this.#strokes.length);
   };
+
+  /** `dsf-stroke-start` (the stroke became long enough to keep) / `dsf-stroke-end` (it was kept), with the stroke count including it. */
+  #dispatchStroke(type: 'dsf-stroke-start' | 'dsf-stroke-end', strokeCount: number): void {
+    this.dispatchEvent(new CustomEvent(type, { bubbles: true, detail: { strokeCount } }));
+  }
 
   readonly #onPointerCancel = (e: PointerEvent): void => {
     if (!this.#active || e.pointerId !== this.#active.pointerId) return;

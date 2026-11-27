@@ -33,3 +33,70 @@ output {
   max-height: 8em;
   overflow: auto;
 }
+
+section {
+  display: grid;
+  gap: 12px;
+  padding-block: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+section > h2,
+section > p {
+  margin: 0;
+}
+
+section > button,
+.value > img {
+  justify-self: start;
+}
+
+.value {
+  display: grid;
+  gap: 8px;
+}
+
+.value > img {
+  max-width: 200px;
+  border: 1px solid #ccc;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+dialog {
+  width: min(560px, calc(100vw - 32px));
+  box-sizing: border-box;
+  display: grid;
+  gap: 12px;
+}
+
+dialog:not([open]) {
+  display: none;
+}
+
+dialog > h3 {
+  margin: 0;
+}
+
+/* Custom styles recipe: custom properties and ::part() from the app's stylesheet. */
+.fancy-signature {
+  --dsf-height: 160px;
+  --dsf-border: 2px solid #1a3fbf;
+  --dsf-radius: 12px;
+  --dsf-area-bg: #f8faff;
+  --dsf-guide-color: #93a5e6;
+  --dsf-button-color: #1a3fbf;
+  --dsf-focus-ring: 3px solid #f59e0b;
+}
+
+.fancy-signature::part(ink) {
+  filter: drop-shadow(0 1px 0 rgb(26 63 191 / 0.25));
+}
+
+.fancy-signature::part(action) {
+  border-radius: 999px;
+}

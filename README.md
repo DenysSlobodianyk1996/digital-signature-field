@@ -63,7 +63,7 @@ npm i @digital-signature-field/element
 </script>
 ```
 
-No bundler? Load it from a CDN: `<script type="module" src="https://cdn.jsdelivr.net/npm/@digital-signature-field/element/+esm"></script>`.
+No bundler? Load it from a CDN: `<script type="module" src="https://cdn.jsdelivr.net/npm/@digital-signature-field/element@1/+esm"></script>`.
 
 ### Angular
 
@@ -294,7 +294,7 @@ pnpm nx e2e-pages site            # build the Pages site into apps/site/dist and
 pnpm nx run-many -t pack          # npm pack --dry-run: what each package would publish
 ```
 
-Releases run from GitHub Actions only: **Actions → Release → Run workflow** on `main` (`.github/workflows/release.yml`). `nx release` gives both packages one version from the conventional commits (or the version you enter), updates `CHANGELOG.md`, tags `v<version>`, and publishes both packages with npm provenance through npm trusted publishing (ADR-0009). Pushing a `v*` tag publishes that tag's versions.
+Releases run from GitHub Actions only (`.github/workflows/release.yml`), automatically on every push to `main`. The first release is `1.0.0`; after that `nx release` picks the next version from the conventional commits since the last tag (`fix` → patch, `feat` → minor, `!` or `BREAKING CHANGE` → major; `chore`, `docs`, `test` and `ci` alone release nothing), updates `CHANGELOG.md`, tags `v<version>`, and publishes both packages with one shared version and npm provenance through npm trusted publishing (ADR-0009). **Actions → Release → Run workflow** gives a dry run or an explicit version; pushing a `v*` tag publishes that tag's versions.
 
 ## License
 

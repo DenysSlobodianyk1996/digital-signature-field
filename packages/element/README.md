@@ -40,7 +40,7 @@ Importing the package registers the element:
 </script>
 ```
 
-No bundler? Load it from a CDN: `<script type="module" src="https://cdn.jsdelivr.net/npm/@digital-signature-field/element/+esm"></script>`.
+No bundler? Load it from a CDN: `<script type="module" src="https://cdn.jsdelivr.net/npm/@digital-signature-field/element@1/+esm"></script>`.
 
 ## React 19 and Vue 3
 

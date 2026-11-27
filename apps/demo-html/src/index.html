@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>digital-signature-field · HTML</title>
+    <!-- Relative URLs: the page works under any base path (GitHub Pages serves it at /digital-signature-field/html/). -->
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./main.js"></script>
+  </head>
+  <body>
+    <main>
+      <a class="all-demos" href="https://github.com/DenysSlobodianyk1996/digital-signature-field#demos"><span aria-hidden="true">←</span> All demos</a>
+      <script>
+        // On GitHub Pages each demo lives at <site>/<demo>/, so the demos index is one level up from the
+        // demo's base. Served at the root (local dev) there is no index: the link keeps the README's demo list.
+        (function (link, base) {
+          if (base !== '/') link.href = new URL('../', new URL(base, location.href)).pathname;
+        })(document.currentScript.previousElementSibling, new URL('./', document.baseURI).pathname);
+      </script>
+      <h1>digital-signature-field · HTML</h1>
+      <p>Plain HTML and a JavaScript module: no framework, no bundler.</p>
+
+      <!-- Variant 1: the README's Vanilla JS recipe, a native form with `required`. -->
+      <section data-testid="default">
+        <h2>Default</h2>
+        <p>
+          The default layout, actions bar below the drawing area, in a native <code>&lt;form&gt;</code> with
+          <code>required</code>. Submit reads the value with <code>FormData</code>.
+        </p>
+        <form id="consent">
+          <digital-signature-field name="signature" required actions="undo redo clear"></digital-signature-field>
+          <img id="consent-preview" alt="Your signature" hidden />
+          <button>Submit</button>
+          <output id="consent-submitted" hidden></output>
+        </form>
+        <div class="value">
+          <details>
+            <summary>Raw value</summary>
+            <output data-testid="value">null</output>
+          </details>
+        </div>
+      </section>
+
+      <!-- Variant 4: `actions="none"`, the page's own toolbar driven by `dsf-history-change`. -->
+      <section data-testid="headless">
+        <h2>Headless with the page's own toolbar</h2>
+        <p>
+          <code>actions="none"</code> hides the built-in bar. The buttons below call <code>undo()</code>,
+          <code>redo()</code> and <code>clear()</code>, and <code>dsf-history-change</code> enables them.
+        </p>
+        <digital-signature-field id="headless-field" actions="none"></digital-signature-field>
+        <div class="toolbar" role="toolbar" aria-label="Signature">
+          <button type="button" id="headless-undo" disabled>Undo</button>
+          <button type="button" id="headless-redo" disabled>Redo</button>
+          <button type="button" id="headless-clear" disabled>Start over</button>
+        </div>
+        <div class="value" data-value-view>
+          <img alt="Signature preview" hidden />
+          <details>
+            <summary>Raw value</summary>
+            <output data-testid="value">null</output>
+          </details>
+        </div>
+      </section>
+
+      <section data-testid="custom-styles">
+        <h2>Custom styles</h2>
+        <p>
+          Custom properties and <code>::part()</code> in the page's stylesheet (<code>.fancy-signature</code>), plus an
+          extra sheet through the <code>styles</code> property.
+        </p>
+        <digital-signature-field id="styled-field" class="fancy-signature"></digital-signature-field>
+        <div class="value" data-value-view>
+          <img alt="Signature preview" hidden />
+          <details>
+            <summary>Raw value</summary>
+            <output data-testid="value">null</output>
+          </details>
+        </div>
+      </section>
+
+      <!-- Variant 5: preview + native <dialog>; the dialog edits a copy. -->
+      <section data-testid="dialog">
+        <h2>Preview + dialog</h2>
+        <p>
+          The form shows the value as an <code>&lt;img&gt;</code>. The dialog edits a copy: <b>Save</b> copies it into
+          the form, <b>Cancel</b> discards it.
+        </p>
+        <div class="value" data-value-view>
+          <img alt="Signature preview" hidden />
+          <details>
+            <summary>Raw value</summary>
+            <output data-testid="value">null</output>
+          </details>
+        </div>
+        <button type="button" id="dialog-open">Add signature</button>
+
+        <dialog id="dialog" aria-labelledby="dialog-title">
+          <h3 id="dialog-title">Sign here</h3>
+          <digital-signature-field id="dialog-field"></digital-signature-field>
+          <div class="toolbar">
+            <button type="button" id="dialog-cancel">Cancel</button>
+            <button type="button" id="dialog-save">Save</button>
+          </div>
+        </dialog>
+      </section>
+
+      <!-- Variant 2: attributes only, plus the `penColors` property. -->
+      <section data-testid="pen-options">
+        <h2>Actions bar above, with pen options</h2>
+        <p>
+          <code>actions="color width undo redo clear"</code>, <code>actions-position="top"</code>,
+          <code>penColors</code> and <code>pressure</code>.
+        </p>
+        <digital-signature-field
+          id="pen-options-field"
+          actions="color width undo redo clear"
+          actions-position="top"
+          pressure
+        ></digital-signature-field>
+        <div class="value" data-value-view>
+          <img alt="Signature preview" hidden />
+          <details>
+            <summary>Raw value</summary>
+            <output data-testid="value">null</output>
+          </details>
+        </div>
+      </section>
+
+      <!-- Variant 3: side rail; `end` follows `dir`. -->
+      <section data-testid="side-rail">
+        <h2>Side rail, right to left</h2>
+        <p>
+          <code>actions-position="end"</code> with <code>dir="rtl"</code>: the rail moves to the left. Labels are
+          translated through <code>labels</code>.
+        </p>
+        <digital-signature-field
+          id="side-rail-field"
+          dir="rtl"
+          actions="undo redo clear"
+          actions-position="end"
+        ></digital-signature-field>
+        <div class="value" data-value-view>
+          <img alt="Signature preview" hidden />
+          <details>
+            <summary>Raw value</summary>
+            <output data-testid="value">null</output>
+          </details>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

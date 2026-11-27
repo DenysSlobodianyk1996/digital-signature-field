@@ -1,0 +1,53 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "demo-html",
+  "projectType": "application",
+  "sourceRoot": "apps/demo-html/src",
+  "tags": ["scope:demo"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["^build"],
+      "outputs": ["{projectRoot}/dist"],
+      "inputs": ["{projectRoot}/src/**/*", "{projectRoot}/scripts/**/*", "^production"],
+      "options": {
+        "cwd": "{projectRoot}",
+        "command": "node scripts/build.mjs"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "{projectRoot}",
+        "command": "tsc -p tsconfig.json"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "{projectRoot}",
+        "command": "eslint ."
+      }
+    },
+    "e2e": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "inputs": ["default", "^production", { "env": "DSF_DEMO_BASE" }],
+      "outputs": ["{projectRoot}/test-results", "{projectRoot}/playwright-report"],
+      "cache": true,
+      "options": {
+        "cwd": "{projectRoot}",
+        "command": "playwright test"
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "continuous": true,
+      "dependsOn": ["build"],
+      "options": {
+        "cwd": "{projectRoot}",
+        "command": "vite preview --outDir dist --base \"${DSF_DEMO_BASE:-/}\" --port 4339 --strictPort"
+      }
+    }
+  }
+}

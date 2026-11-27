@@ -28,7 +28,7 @@ import {
   type Ink,
   type ValueFormat,
 } from './serialize';
-import { parseValue, type BaseLayer, type SignatureData } from './value';
+import { isJsonText, parseValue, type BaseLayer, type SignatureData } from './value';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -160,6 +160,29 @@ interface ActiveStroke {
   started: boolean;
 }
 
+/** Every public writable property, in the order a pre-upgrade instance value is applied (`value` last). */
+const UPGRADED_PROPERTIES = [
+  'minStrokeLength',
+  'penColor',
+  'penWidth',
+  'smoothing',
+  'pressure',
+  'valueFormat',
+  'background',
+  'historyLimit',
+  'name',
+  'disabled',
+  'readOnly',
+  'required',
+  'minStrokes',
+  'actions',
+  'actionsPosition',
+  'labels',
+  'penColors',
+  'styles',
+  'value',
+] as const satisfies ReadonlyArray<keyof DigitalSignatureFieldElement>;
+
 const DEFAULT_MIN_STROKE_LENGTH = 8;
 const DEFAULT_MIN_STROKES = 1;
 const DEFAULT_PEN_COLOR = '#000';
@@ -183,6 +206,8 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     'readonly',
     'required',
     'min-strokes',
+    'value-format',
+    'background',
   ];
 
   readonly #root: HTMLDivElement;
@@ -250,31 +275,35 @@ export class DigitalSignatureFieldElement extends HTMLElement {
       case 'readonly':
         this.#syncInteractivity();
         break;
+      // `value-format` and `background` shape the serialized value: the form gets the new value, with no
+      // `change` (the next one uses it).
       case 'required':
       case 'min-strokes':
+      case 'value-format':
+      case 'background':
         this.#syncForm();
         break;
-      default:
+      default: // smoothing, pressure: the ink and the value both change.
         this.#render();
+        this.#syncForm();
     }
   }
 
   connectedCallback(): void {
-    // A `value` set before the element was upgraded sits on the instance and shadows the accessor.
-    if (Object.hasOwn(this, 'value')) {
-      const value: unknown = (this as { value?: unknown }).value;
-      delete (this as { value?: unknown }).value;
-      this.value = value as string | SignatureData | null;
-    }
-    if (Object.hasOwn(this, 'styles')) {
-      const styles: unknown = (this as { styles?: unknown }).styles;
-      delete (this as { styles?: unknown }).styles;
-      this.styles = styles as Styles | null;
+    // A property set before the element was upgraded sits on the instance and shadows the accessor:
+    // move it onto the accessor. `value` goes last, so it loads with the configured format and pen.
+    const self = this as unknown as Record<string, unknown>;
+    for (const key of UPGRADED_PROPERTIES) {
+      if (!Object.hasOwn(this, key)) continue;
+      const value = self[key];
+      delete self[key];
+      self[key] = value;
     }
     this.#area.addEventListener('pointerdown', this.#onPointerDown);
     this.#area.addEventListener('pointermove', this.#onPointerMove);
     this.#area.addEventListener('pointerup', this.#onPointerUp);
     this.#area.addEventListener('pointercancel', this.#onPointerCancel);
+    this.#area.addEventListener('lostpointercapture', this.#onPointerCancel);
     this.addEventListener('keydown', this.#onKeyDown);
   }
 
@@ -283,8 +312,9 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.#area.removeEventListener('pointermove', this.#onPointerMove);
     this.#area.removeEventListener('pointerup', this.#onPointerUp);
     this.#area.removeEventListener('pointercancel', this.#onPointerCancel);
+    this.#area.removeEventListener('lostpointercapture', this.#onPointerCancel);
     this.removeEventListener('keydown', this.#onKeyDown);
-    this.#setActive(null);
+    this.#dropActive();
   }
 
   /** Called by the browser for `disabled` on the field or on an ancestor `<fieldset>`. */
@@ -485,7 +515,11 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   }
 
   set labels(value: Partial<Labels> | null | undefined) {
-    this.#labels = { ...DEFAULT_LABELS, ...value };
+    const labels = { ...DEFAULT_LABELS };
+    for (const [key, text] of Object.entries(value ?? {})) {
+      if (typeof text === 'string' && key in labels) labels[key as keyof Labels] = text;
+    }
+    this.#labels = labels;
     this.#renderActions();
     this.#updateEmptyState();
   }
@@ -595,10 +629,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
 
   /** Applies disabled / readonly: drops a stroke in progress, updates the buttons and the tab order. */
   #syncInteractivity(): void {
-    if (this.#locked && this.#active) {
-      this.#setActive(null);
-      this.#render();
-    }
+    if (this.#locked) this.#dropActive();
     this.#area.tabIndex = this.#formDisabled ? -1 : 0;
     if (this.#formDisabled) this.#area.setAttribute('aria-disabled', 'true');
     else this.#area.removeAttribute('aria-disabled');
@@ -613,17 +644,27 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   set value(value: string | SignatureData | null) {
     if (this.#isCurrentValue(value)) return;
     const loaded = parseValue(value);
-    if (loaded) void prepareImages(loaded);
     const state: InkState = loaded ? { size: loaded.size, base: loaded.base, strokes: [] } : EMPTY;
     this.#initialState ??= state;
     this.#load(state);
+    if (loaded?.base.image) void prepareImages(loaded).then(() => this.#syncDecodedImage(loaded.base));
+  }
+
+  /**
+   * A PNG value is painted synchronously, so a base image still decoding is missing from it. Once the
+   * image has decoded, report the value to the form again while that base layer is still shown.
+   */
+  #syncDecodedImage(base: BaseLayer): void {
+    if (this.#history.present.base === base && this.valueFormat === 'png') this.#syncForm();
   }
 
   #isCurrentValue(value: unknown): boolean {
     if (value === null || value === undefined || value === '') return this.empty;
     const current = this.#inkToExport;
     if (!current) return false;
-    if (typeof value === 'string') return value === this.value || value === toSvgDataUrl(current, this.#exportOptions);
+    if (typeof value === 'string' && !isJsonText(value)) {
+      return value === this.value || value === toSvgDataUrl(current, this.#exportOptions);
+    }
     const loaded = parseValue(value);
     return !!loaded && JSON.stringify(toData({ ...loaded, strokes: [] })) === JSON.stringify(toData(current));
   }
@@ -691,6 +732,9 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   /** Ctrl/Cmd+Z undoes; Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y redo. Keydowns reach the host only while focus is inside the field. */
   readonly #onKeyDown = (e: KeyboardEvent): void => {
     if (this.#locked || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+    // Only from the field's own parts: a slotted control (e.g. an <input> in `actions-end`) keeps its own Ctrl+Z.
+    const origin = e.composedPath()[0];
+    if (!(origin instanceof Node) || !this.shadowRoot!.contains(origin)) return;
     const key = e.key.toLowerCase();
     const action: HistoryAction | null =
       key === 'z' ? (e.shiftKey ? 'redo' : 'undo') : key === 'y' && !e.shiftKey ? 'redo' : null;
@@ -733,7 +777,13 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   }
 
   readonly #onPointerDown = (e: PointerEvent): void => {
-    if (this.#active || e.button !== 0 || this.#locked) return;
+    if (e.button !== 0 || this.#locked) return;
+    if (this.#active) {
+      // Another pointer while one is drawing (a second finger) is ignored. The same pointer going down
+      // again means the stroke in progress is stale: its pointerup went elsewhere and never came.
+      if (this.#active.pointerId !== e.pointerId) return;
+      this.#dropActive();
+    }
     e.preventDefault();
     try {
       this.#area.setPointerCapture(e.pointerId);
@@ -783,11 +833,22 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.dispatchEvent(new CustomEvent(type, { bubbles: true, detail: { strokeCount } }));
   }
 
+  /** `pointercancel` or `lostpointercapture`: the stroke in progress will get no pointerup, so it is dropped. */
   readonly #onPointerCancel = (e: PointerEvent): void => {
-    if (!this.#active || e.pointerId !== this.#active.pointerId) return;
+    if (this.#active?.pointerId === e.pointerId) this.#dropActive();
+  };
+
+  /**
+   * Drops the stroke in progress, if any: no ink, no `change`. A stroke that already fired `dsf-stroke-start`
+   * gets its `dsf-stroke-end`, with the stroke count it did not add to.
+   */
+  #dropActive(): void {
+    const active = this.#active;
+    if (!active) return;
     this.#setActive(null);
     this.#render();
-  };
+    if (active.started) this.#dispatchStroke('dsf-stroke-end', this.#strokes.length);
+  }
 
   /** Starts or ends the stroke in progress; `:state(drawing)` matches while there is one. */
   #setActive(active: ActiveStroke | null): void {
@@ -811,7 +872,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
    * The single load path: form reset uses it, and so does writing `value`.
    */
   #load(state: InkState): void {
-    this.#setActive(null);
+    this.#dropActive();
     this.#history.reset(state);
     this.#render();
     this.#syncForm();

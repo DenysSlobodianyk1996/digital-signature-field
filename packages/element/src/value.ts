@@ -113,13 +113,23 @@ function fromImage(url: string): LoadedValue | null {
   return image && { size: image.size, base: { strokes: [], image } };
 }
 
+/** Whether a string value is JSON text (what a `value-format="json"` field submits to its form). */
+export const isJsonText = (value: string): boolean => value.trimStart().startsWith('{');
+
 /**
  * Turns a written `value` into what the field loads. `null` means "empty the field": the value was
- * `null`, an empty string, or something the field cannot read (not signature data, PNG or SVG).
+ * `null`, an empty string, or something the field cannot read (not signature data, its JSON text, PNG or SVG).
  */
 export function parseValue(value: unknown): LoadedValue | null {
   if (typeof value !== 'string') return fromSignatureData(value);
   if (value.trim() === '') return null;
+  if (isJsonText(value)) {
+    try {
+      return fromSignatureData(JSON.parse(value));
+    } catch {
+      return null;
+    }
+  }
   const xml = decodeSvgDataUrl(value);
   return (xml !== null && fromFieldSvg(xml)) || fromImage(value);
 }

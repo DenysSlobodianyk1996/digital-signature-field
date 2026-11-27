@@ -7,10 +7,10 @@ import {
   Output,
   afterNextRender,
   booleanAttribute,
-  computed,
   effect,
   input,
   model,
+  type Signal,
   signal,
   viewChild,
 } from '@angular/core';
@@ -52,6 +52,27 @@ type Settings = Partial<{
   penColors: readonly string[];
   styles: Styles;
 }>;
+
+/**
+ * The attribute each setting reflects to, removed when its input goes back to `undefined`. `null` for
+ * property-only settings, which are reset by writing `null`.
+ */
+const SETTING_ATTRIBUTES: Record<keyof Settings, string | null> = {
+  valueFormat: 'value-format',
+  background: 'background',
+  penColor: 'pen-color',
+  penWidth: 'pen-width',
+  pressure: 'pressure',
+  smoothing: 'smoothing',
+  minStrokes: 'min-strokes',
+  minStrokeLength: 'min-stroke-length',
+  historyLimit: 'history-limit',
+  actions: 'actions',
+  actionsPosition: 'actions-position',
+  labels: null,
+  penColors: null,
+  styles: null,
+};
 
 const optionalBoolean = (value: unknown): boolean | undefined => (value == null ? undefined : booleanAttribute(value));
 
@@ -137,22 +158,22 @@ export class DsfSignature {
   /** Listeners for values the user produced (not programmatic writes); used by CVA mode. */
   private readonly userInput = new Set<(value: DsfSignatureValue) => void>();
 
-  private readonly settings = computed<Settings>(() => ({
-    valueFormat: this.valueFormat(),
-    background: this.background(),
-    penColor: this.penColor(),
-    penWidth: this.penWidth(),
-    pressure: this.pressure(),
-    smoothing: this.smoothing(),
-    minStrokes: this.minStrokes(),
-    minStrokeLength: this.minStrokeLength(),
-    historyLimit: this.historyLimit(),
-    actions: this.actions(),
-    actionsPosition: this.actionsPosition(),
-    labels: this.labels(),
-    penColors: this.penColors(),
-    styles: this.styles(),
-  }));
+  private readonly settings: { [K in keyof Settings]-?: Signal<Settings[K]> } = {
+    valueFormat: this.valueFormat,
+    background: this.background,
+    penColor: this.penColor,
+    penWidth: this.penWidth,
+    pressure: this.pressure,
+    smoothing: this.smoothing,
+    minStrokes: this.minStrokes,
+    minStrokeLength: this.minStrokeLength,
+    historyLimit: this.historyLimit,
+    actions: this.actions,
+    actionsPosition: this.actionsPosition,
+    labels: this.labels,
+    penColors: this.penColors,
+    styles: this.styles,
+  };
 
   constructor() {
     afterNextRender(() => {
@@ -160,16 +181,21 @@ export class DsfSignature {
       else void import('@digital-signature-field/element').then(() => this.ready.set(true));
     });
 
-    // Settings first, so a value is loaded with the configured format and pen.
-    effect(() => {
-      const el = this.element();
-      if (!el) return;
-      const settings = this.settings();
-      for (const key of Object.keys(settings) as Array<keyof Settings>) {
-        const value = settings[key];
+    // Settings first, so a value is loaded with the configured format and pen. One effect per setting:
+    // changing one input never re-applies the others (which would undo, say, the signer's swatch pick).
+    // An input going back to `undefined` restores the element's default.
+    for (const key of Object.keys(this.settings) as Array<keyof Settings>) {
+      const setting: Signal<unknown> = this.settings[key];
+      effect(() => {
+        const value = setting();
+        const el = this.element();
+        if (!el) return;
+        const attribute = SETTING_ATTRIBUTES[key];
         if (value !== undefined) (el as unknown as Record<string, unknown>)[key] = value;
-      }
-    });
+        else if (attribute) el.removeAttribute(attribute);
+        else (el as unknown as Record<string, unknown>)[key] = null;
+      });
+    }
 
     effect(() => {
       const el = this.element();

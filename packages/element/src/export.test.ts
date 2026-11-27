@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DigitalSignatureFieldElement, SignatureData } from '@digital-signature-field/element';
 import { decodeSvg, draw, exportedStrokes, mount } from './test-utils';
 
@@ -353,10 +353,78 @@ describe('in a form', () => {
     expect(JSON.parse(new FormData(form).get('signature') as string)).toEqual(SIGNATURE);
   });
 
+  it('the submitted JSON text loads back into a field', () => {
+    const { form, el } = inForm({ 'value-format': 'json' });
+    draw(el, [[10, 10], [60, 30]]);
+    const submitted = new FormData(form).get('signature') as string;
+    const other = mount();
+    other.value = submitted;
+    expect(other.toJSON()).toEqual(el.toJSON());
+    expect(other.canUndo).toBe(false);
+  });
+
+  it('writing back the JSON text of the current value keeps the history', () => {
+    const { form, el } = inForm({ 'value-format': 'json' });
+    draw(el, [[10, 10], [60, 30]]);
+    el.value = new FormData(form).get('signature') as string;
+    expect(el.canUndo).toBe(true);
+  });
+
+  it('text that is not signature data JSON empties the field', () => {
+    const el = mount();
+    el.value = structuredClone(SIGNATURE);
+    el.value = JSON.stringify({ ...SIGNATURE, version: 2 });
+    expect(el.empty).toBe(true);
+    el.value = structuredClone(SIGNATURE);
+    el.value = '{not json';
+    expect(el.empty).toBe(true);
+  });
+
   it('png values are submitted as the PNG data URL', () => {
     const { form, el } = inForm({ 'value-format': 'png' });
     draw(el, [[10, 10], [60, 10]]);
     expect(new FormData(form).get('signature')).toBe(el.value);
+  });
+
+  it.each([
+    ['a PNG', () => solidPng(41, 21, '#f00'), [255, 0, 0, 255]],
+    ['a foreign SVG', () => svgUrl(FOREIGN_SVG.replace('#00f', '#0f0')), [0, 255, 0, 255]],
+  ] as const)('png values: a loaded %s is in the submitted PNG once it has decoded', async (_, image, rgba) => {
+    const { form, el } = inForm({ 'value-format': 'png' });
+    el.value = image();
+    await vi.waitFor(async () => {
+      const submitted = await png(new FormData(form).get('signature'));
+      expect(submitted.at(Math.floor(submitted.width / 2), Math.floor(submitted.height / 2))).toEqual(rgba);
+    });
+  });
+
+  it('png values: strokes drawn before the loaded image decoded are submitted with the image', async () => {
+    const { form, el } = inForm({ 'value-format': 'png' });
+    el.value = solidPng(397, 199, '#f00');
+    draw(el, [[10, 10], [100, 10]]);
+    await vi.waitFor(async () => {
+      const submitted = await png(new FormData(form).get('signature'));
+      expect(submitted.at(300, 150)).toEqual([255, 0, 0, 255]);
+      expect(submitted.at(50, 10)).not.toEqual([255, 0, 0, 255]);
+    });
+  });
+
+  const settingChanges: Array<[string, (el: DigitalSignatureFieldElement) => void]> = [
+    ['value-format', (el) => (el.valueFormat = 'json')],
+    ['background', (el) => (el.background = '#abcdef')],
+    ['smoothing', (el) => (el.smoothing = 0)],
+    ['pressure', (el) => (el.pressure = true)],
+  ];
+  it.each(settingChanges)('changing %s updates the submitted value, without firing change', (_, change) => {
+    const { form, el } = inForm({});
+    draw(el, [[10, 10], [60, 30], [90, 10]], { pressures: [0.2, 0.9, 0.4] });
+    const before = new FormData(form).get('signature');
+    const seen = changeDetails(el);
+    change(el);
+    const after = new FormData(form).get('signature');
+    expect(after).not.toBe(before);
+    expect(after).toBe(typeof el.value === 'string' ? el.value : JSON.stringify(el.value));
+    expect(seen).toEqual([]);
   });
 
   it('a loaded image satisfies required and min-strokes', () => {

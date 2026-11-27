@@ -223,6 +223,14 @@ describe('labels', () => {
     expect(el.labels.redo).toBe('Redo');
     expect(el.labels.undo).toBe('בטל');
   });
+
+  it('keeps the English text for keys given as undefined', () => {
+    const el = mount();
+    el.labels = { undo: undefined, clear: 'Löschen', drawingArea: undefined };
+    expect(names(shownButtons(el))).toEqual(['Undo', 'Löschen']);
+    expect(area(el).getAttribute('aria-label')).toBe('Signature drawing area');
+    expect(el.labels.undo).toBe('Undo');
+  });
 });
 
 describe('status live region', () => {

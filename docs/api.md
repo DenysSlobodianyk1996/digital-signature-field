@@ -12,7 +12,7 @@
 | `required` | `required` | `boolean` | `false` | Invalid (`valueMissing`) while the field is empty. |
 | `disabled` | `disabled` | `boolean` | `false` | Blocks drawing and all actions. Excluded from form submission. |
 | `readonly` | `readOnly` | `boolean` | `false` | Shows the ink and blocks drawing and actions. Still submitted. |
-| — | `value` | `string \| SignatureData \| null` | `null` | Setting it loads a base layer and **does not** emit `change`. Setting the value the field already has does nothing, so the history is kept. |
+| — | `value` | `string \| SignatureData \| null` | `null` | Setting it loads a base layer and **does not** emit `change`. Accepts an SVG or PNG data URL, `SignatureData`, or its JSON text (what a `json` field submits to its form). Setting the value the field already has does nothing, so the history is kept. |
 | `value-format` | `valueFormat` | `'svg' \| 'png' \| 'json'` | `'svg'` | Format of `value` and of the `change` detail. |
 | `background` | `background` | CSS colour \| `'transparent'` | `'#fff'` | Painted into exported `svg` and `png` values. |
 | `pen-color` | `penColor` | CSS colour | `'#000'` | Applies to new strokes. |
@@ -50,7 +50,7 @@
 | --- | --- | --- |
 | `change` | `{ value }` | After each stroke ends, and after undo, redo and clear. Never fired when a value is loaded. |
 | `dsf-history-change` | `{ canUndo, canRedo, empty }` | Whenever any of the three changes. Use it to drive an external toolbar. |
-| `dsf-stroke-start` / `dsf-stroke-end` | `{ strokeCount }` | Only for strokes that are kept, never for taps: `dsf-stroke-start` once the stroke in progress is long enough to keep (`min-stroke-length`), `dsf-stroke-end` at pen up, after `change`. `strokeCount` includes the stroke. |
+| `dsf-stroke-start` / `dsf-stroke-end` | `{ strokeCount }` | Only for strokes that are kept, never for taps: `dsf-stroke-start` once the stroke in progress is long enough to keep (`min-stroke-length`), `dsf-stroke-end` at pen up, after `change`. `strokeCount` includes the stroke. Every `dsf-stroke-start` is paired with a `dsf-stroke-end`: when a started stroke is dropped instead of kept (`pointercancel`, lost pointer capture, the field locked, removed or loaded mid-stroke), `dsf-stroke-end` fires with no `change` and a `strokeCount` that does not include it. |
 | `blur` | — | Focus left the field. Wrappers map this to "touched". |
 
 ### Type exports
@@ -92,7 +92,7 @@ A PNG data URL, or an SVG the field did not export, loads as a base-layer **imag
 | `DsfSignature` | standalone component `<dsf-signature>` | Wraps the element. Has the `FormValueControl` shape (ADR-0003). |
 | `DsfSignatureCva` | standalone directive `[dsfCva]` | CVA mode, for Angular 17–21 forms. |
 
-`<dsf-signature>` passes through every element property as an `input()` with the same camelCase name (`name`, `valueFormat`, `background`, `penColor`, `penWidth`, `pressure`, `smoothing`, `minStrokes`, `minStrokeLength`, `historyLimit`, `actions`, `actionsPosition`, `labels`, `penColors`, `styles`). Unbound inputs keep the element's defaults. Its form contract:
+`<dsf-signature>` passes through every element property as an `input()` with the same camelCase name (`name`, `valueFormat`, `background`, `penColor`, `penWidth`, `pressure`, `smoothing`, `minStrokes`, `minStrokeLength`, `historyLimit`, `actions`, `actionsPosition`, `labels`, `penColors`, `styles`). Unbound inputs keep the element's defaults, and an input set back to `undefined` restores the default. Each input is applied on its own, so changing one never re-applies the others (a pen colour the signer picked from the swatches stays until `penColor` itself changes). Its form contract:
 
 ```ts
 value    = model<string | SignatureData | null>(null);
@@ -104,7 +104,7 @@ touch    = output<void>();  // focus left the field, or a stroke ended while unt
 
 Loading a value from the form (or `[(value)]`) never marks the control dirty; drawing does. `invalid` adds the `dsf-invalid` class to the host.
 
-The element's events are re-exposed as outputs: `historyChange` (`{ canUndo, canRedo, empty }`), `strokeStart` and `strokeEnd` (`DsfStrokeEvent`: `{ strokeCount }`). Value changes come through the `value` model (`[(value)]`).
+The element's events are re-exposed as outputs: `historyChange` (`{ canUndo, canRedo, empty }`), `strokeStart` and `strokeEnd` (`DsfStrokeEvent`: `{ strokeCount }`), paired like the element's events: a dropped stroke emits `strokeEnd` with the unchanged count. Value changes come through the `value` model (`[(value)]`).
 
 Imperative access is through `viewChild(DsfSignature)`: `.undo()`, `.redo()`, `.clear()`, `.toSVG()`, `.toPNG()`, `.toJSON()`, `.focus()`. They throw before the element is available (on the server, or before the first browser render).
 

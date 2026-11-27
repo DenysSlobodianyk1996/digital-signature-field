@@ -50,6 +50,26 @@ class InputsHost {
   readonly penColors = ['#1a3fbf', '#c00'];
 }
 
+@Component({
+  imports: [DsfSignature],
+  template: `<dsf-signature
+    style="width: 400px"
+    actions="undo clear color"
+    [penColor]="penColor()"
+    [penColors]="penColors()"
+    [labels]="labels()"
+    [pressure]="pressure()"
+    [smoothing]="smoothing()"
+  />`,
+})
+class ChangingInputsHost {
+  readonly penColor = signal<string | undefined>('#1a3fbf');
+  readonly penColors = signal<readonly string[] | undefined>(['#1a3fbf', '#c00']);
+  readonly labels = signal<Partial<Labels> | undefined>(undefined);
+  readonly pressure = signal<boolean | undefined>(undefined);
+  readonly smoothing = signal<number | undefined>(undefined);
+}
+
 async function render<T>(host: new () => T) {
   const fixture = TestBed.createComponent(host);
   await settle(fixture);
@@ -88,6 +108,41 @@ describe('<dsf-signature> inputs', () => {
   });
 });
 
+describe('<dsf-signature> inputs that change', () => {
+  it("changing one input does not re-apply the others (keeps the signer's swatch pick)", async () => {
+    const { fixture, host, field } = await render(ChangingInputsHost);
+    const swatch = field.shadowRoot!.querySelector<HTMLButtonElement>('button[data-action="color"][data-value="#c00"]')!;
+    swatch.click();
+    expect(field.penColor).toBe('#c00');
+    host.labels.set({ undo: 'Rückgängig' });
+    await settle(fixture);
+    expect(field.labels.undo).toBe('Rückgängig');
+    expect(field.penColor).toBe('#c00');
+  });
+
+  it("an input going back to undefined restores the element's default", async () => {
+    const { fixture, host, field } = await render(ChangingInputsHost);
+    host.labels.set({ undo: 'Rückgängig' });
+    host.pressure.set(true);
+    host.smoothing.set(0);
+    await settle(fixture);
+    expect([field.penColor, field.labels.undo, field.pressure, field.smoothing]).toEqual(['#1a3fbf', 'Rückgängig', true, 0]);
+
+    host.penColor.set(undefined);
+    host.penColors.set(undefined);
+    host.labels.set(undefined);
+    host.pressure.set(undefined);
+    host.smoothing.set(undefined);
+    await settle(fixture);
+    expect(field.penColor).toBe('#000');
+    expect(field.hasAttribute('pen-color')).toBe(false);
+    expect(field.penColors.includes('#c00')).toBe(false);
+    expect(field.labels.undo).toBe('Undo');
+    expect(field.pressure).toBe(false);
+    expect(field.smoothing).toBe(0.5);
+  });
+});
+
 describe('<dsf-signature> [(value)] without forms', () => {
   it('writes drawn values to the bound signal and loads values set on it', async () => {
     const { fixture, host, field } = await render(TwoWayHost);
@@ -118,6 +173,25 @@ describe('<dsf-signature> outputs', () => {
       ['strokeEnd', { strokeCount: 1 }],
       ['touch', null],
     ]);
+  });
+
+  it('pairs strokeStart with strokeEnd when a started stroke is dropped', async () => {
+    const { fixture, host, field } = await render(TwoWayHost);
+    const area = field.shadowRoot!.querySelector<HTMLElement>('[part~="area"]')!;
+    const rect = area.getBoundingClientRect();
+    const send = (type: string, x: number) =>
+      area.dispatchEvent(
+        new PointerEvent(type, { bubbles: true, composed: true, pointerId: 1, button: 0, clientX: rect.left + x, clientY: rect.top + 20 }),
+      );
+    send('pointerdown', 10);
+    send('pointermove', 80);
+    send('pointercancel', 80);
+    await fixture.whenStable();
+    expect(host.events.filter(([name]) => name.startsWith('stroke'))).toEqual([
+      ['strokeStart', { strokeCount: 1 }],
+      ['strokeEnd', { strokeCount: 0 }],
+    ]);
+    expect(host.value()).toBeNull();
   });
 
   it('touches when focus leaves the field', async () => {

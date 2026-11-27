@@ -1,6 +1,18 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { DigitalSignatureFieldElement } from '@digital-signature-field/element';
-import { area, changes, decodeSvg, draw, exportedStrokes, inkStrokes, mount, paint, type Point } from './test-utils';
+import {
+  area,
+  changes,
+  decodeSvg,
+  draw,
+  exportedStrokes,
+  inkStrokes,
+  mount,
+  paint,
+  pointer,
+  strokeEvents,
+  type Point,
+} from './test-utils';
 
 afterEach(() => {
   document.body.replaceChildren();
@@ -296,6 +308,79 @@ describe('<digital-signature-field>', () => {
       expect(ink.querySelectorAll('[id]')).toHaveLength(0);
       expect(exportedStrokes(el.value!)).toHaveLength(3);
       expect(decodeSvg(el.value!).querySelectorAll('[id]')).toHaveLength(0);
+    });
+  });
+
+  describe('a stroke that never gets its pointerup', () => {
+    it('is cancelled when the area loses pointer capture, and the next stroke draws', () => {
+      const el = mount();
+      const seen = changes(el);
+      pointer(el, 'pointerdown', [10, 10]);
+      pointer(el, 'pointermove', [60, 10]);
+      pointer(el, 'lostpointercapture');
+      expect(el.matches(':state(drawing)')).toBe(false);
+      expect(inkStrokes(el)).toHaveLength(0);
+      draw(el, [[10, 50], [80, 50]], { pointerType: 'touch', pointerId: 7 });
+      expect(seen).toHaveLength(1);
+      expect(exportedStrokes(el.value)).toHaveLength(1);
+    });
+
+    it('is dropped when the same pointer goes down again, which starts a new stroke', () => {
+      const el = mount();
+      const seen = changes(el);
+      pointer(el, 'pointerdown', [10, 10]);
+      pointer(el, 'pointermove', [60, 10]);
+      // Its pointerup went elsewhere (e.g. the field's <dialog> closed mid-stroke).
+      draw(el, [[10, 50], [80, 50]]);
+      expect(el.matches(':state(drawing)')).toBe(false);
+      expect(seen).toHaveLength(1);
+      expect(exportedStrokes(el.value)).toHaveLength(1);
+      expect(inkStrokes(el)).toHaveLength(1);
+      // The new stroke, not the stale one continued.
+      expect(el.toJSON()!.strokes[0]!.points[0]).toMatchObject({ x: 10, y: 50 });
+    });
+
+    it('leaves no partial ink behind when the field is removed mid-stroke', () => {
+      const el = mount();
+      pointer(el, 'pointerdown', [10, 10]);
+      pointer(el, 'pointermove', [60, 10]);
+      expect(inkStrokes(el)).toHaveLength(1);
+      el.remove();
+      expect(inkStrokes(el)).toHaveLength(0);
+      document.body.append(el);
+      expect(inkStrokes(el)).toHaveLength(0);
+      expect(el.matches(':state(drawing)')).toBe(false);
+    });
+  });
+
+  describe('dsf-stroke-end for a dropped stroke', () => {
+    const cases: Array<[string, (el: DigitalSignatureFieldElement) => void]> = [
+      ['pointercancel', (el) => pointer(el, 'pointercancel', [60, 10])],
+      ['lost pointer capture', (el) => pointer(el, 'lostpointercapture')],
+      ['disabled mid-stroke', (el) => (el.disabled = true)],
+      ['readonly mid-stroke', (el) => (el.readOnly = true)],
+      ['a value loaded mid-stroke', (el) => (el.value = null)],
+      ['removed mid-stroke', (el) => el.remove()],
+    ];
+    it.each(cases)('fires with the unchanged stroke count when a started stroke is dropped (%s)', (_, drop) => {
+      const el = mount();
+      draw(el, [[10, 80], [80, 80]]);
+      const seen = strokeEvents(el);
+      const changed = changes(el);
+      pointer(el, 'pointerdown', [10, 10]);
+      pointer(el, 'pointermove', [60, 10]);
+      drop(el);
+      expect(seen).toEqual(['dsf-stroke-start:2', 'dsf-stroke-end:1']);
+      expect(changed).toEqual([]);
+    });
+
+    it('does not fire for a dropped stroke that never started (still a tap)', () => {
+      const el = mount();
+      const seen = strokeEvents(el);
+      pointer(el, 'pointerdown', [10, 10]);
+      pointer(el, 'pointermove', [12, 10]);
+      pointer(el, 'pointercancel', [12, 10]);
+      expect(seen).toEqual([]);
     });
   });
 });

@@ -145,11 +145,12 @@ describe('custom properties', () => {
     expect(css(button).outlineWidth).toBe('3px');
   });
 
-  it('--dsf-invalid-color marks the drawing area while the field is invalid', (ctx) => {
+  it('--dsf-invalid-color marks the drawing area while the field is invalid', () => {
     const el = mount({ required: '' });
     el.style.setProperty('--dsf-invalid-color', 'rgb(22, 23, 24)');
-    // :state(invalid) is set by form participation (#10); until it lands there is nothing to style.
-    if (!el.matches(':state(invalid)')) ctx.skip();
+    expect(css(area(el)).borderTopColor).not.toBe('rgb(22, 23, 24)');
+    el.checkValidity(); // a submit attempt: invalidity is shown from now on
+    expect(el.matches(':state(invalid)')).toBe(true);
     expect(css(area(el)).borderTopColor).toBe('rgb(22, 23, 24)');
   });
 });

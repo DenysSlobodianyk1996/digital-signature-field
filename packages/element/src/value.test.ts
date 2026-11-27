@@ -151,6 +151,42 @@ describe('loading a value', () => {
     customElements.define('dsf-late-upgrade', class extends Field {});
     expect(el.value).toBe(value);
   });
+
+  it('keeps every property set before the element was defined', async () => {
+    const props = {
+      minStrokeLength: 3,
+      penColor: '#c00',
+      penWidth: 4,
+      smoothing: 0,
+      pressure: true,
+      valueFormat: 'json',
+      background: 'transparent',
+      historyLimit: 5,
+      name: 'signature',
+      disabled: true,
+      readOnly: true,
+      required: true,
+      minStrokes: 2,
+      actions: 'undo redo color',
+      actionsPosition: 'top',
+      penColors: ['#c00', '#00c'],
+      styles: ':host { --dsf-height: 120px; }',
+    } as const;
+    const el = document.createElement('dsf-late-upgrade-all') as DigitalSignatureFieldElement;
+    Object.assign(el, props, { labels: { undo: 'Rückgängig' } });
+    document.body.append(el);
+    const { DigitalSignatureFieldElement: Field } = await import('@digital-signature-field/element');
+    customElements.define('dsf-late-upgrade-all', class extends Field {});
+    for (const [key, expected] of Object.entries(props)) {
+      expect.soft((el as unknown as Record<string, unknown>)[key], key).toEqual(expected);
+    }
+    expect(el.labels.undo).toBe('Rückgängig');
+    expect(el.labels.redo).toBe('Redo');
+    // Applied through the element's accessors, not left on the instance shadowing them.
+    expect(Object.keys(el)).toEqual([]);
+    expect(el.getAttribute('pen-color')).toBe('#c00');
+    expect(el.matches(':disabled')).toBe(true);
+  });
 });
 
 describe('legacy regressions', () => {

@@ -160,6 +160,29 @@ interface ActiveStroke {
   started: boolean;
 }
 
+/** Every public writable property, in the order a pre-upgrade instance value is applied (`value` last). */
+const UPGRADED_PROPERTIES = [
+  'minStrokeLength',
+  'penColor',
+  'penWidth',
+  'smoothing',
+  'pressure',
+  'valueFormat',
+  'background',
+  'historyLimit',
+  'name',
+  'disabled',
+  'readOnly',
+  'required',
+  'minStrokes',
+  'actions',
+  'actionsPosition',
+  'labels',
+  'penColors',
+  'styles',
+  'value',
+] as const satisfies ReadonlyArray<keyof DigitalSignatureFieldElement>;
+
 const DEFAULT_MIN_STROKE_LENGTH = 8;
 const DEFAULT_MIN_STROKES = 1;
 const DEFAULT_PEN_COLOR = '#000';
@@ -260,16 +283,14 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   }
 
   connectedCallback(): void {
-    // A `value` set before the element was upgraded sits on the instance and shadows the accessor.
-    if (Object.hasOwn(this, 'value')) {
-      const value: unknown = (this as { value?: unknown }).value;
-      delete (this as { value?: unknown }).value;
-      this.value = value as string | SignatureData | null;
-    }
-    if (Object.hasOwn(this, 'styles')) {
-      const styles: unknown = (this as { styles?: unknown }).styles;
-      delete (this as { styles?: unknown }).styles;
-      this.styles = styles as Styles | null;
+    // A property set before the element was upgraded sits on the instance and shadows the accessor:
+    // move it onto the accessor. `value` goes last, so it loads with the configured format and pen.
+    const self = this as unknown as Record<string, unknown>;
+    for (const key of UPGRADED_PROPERTIES) {
+      if (!Object.hasOwn(this, key)) continue;
+      const value = self[key];
+      delete self[key];
+      self[key] = value;
     }
     this.#area.addEventListener('pointerdown', this.#onPointerDown);
     this.#area.addEventListener('pointermove', this.#onPointerMove);

@@ -68,7 +68,16 @@ describe('<digital-signature-field>', () => {
     const [left, top] = [rect.left + target.clientLeft, rect.top + target.clientTop];
     const at = (type: string, pointerId: number, x: number, y: number) =>
       target.dispatchEvent(
-        new PointerEvent(type, { bubbles: true, composed: true, pointerId, pointerType: 'touch', clientX: left + x, clientY: top + y }),
+        new PointerEvent(type, {
+          bubbles: true,
+          composed: true,
+          pointerId,
+          pointerType: 'touch',
+          button: type === 'pointermove' ? -1 : 0,
+          buttons: type === 'pointerup' ? 0 : 1,
+          clientX: left + x,
+          clientY: top + y,
+        }),
       );
     at('pointerdown', 1, 10, 10);
     at('pointerdown', 2, 100, 100);
@@ -311,13 +320,57 @@ describe('<digital-signature-field>', () => {
     });
   });
 
-  describe('a stroke that never gets its pointerup', () => {
-    it('is cancelled when the area loses pointer capture, and the next stroke draws', () => {
+  describe('releasing the button', () => {
+    // Captured from a real Chrome session, mouse released while still moving: capture is released
+    // *before* pointerup. Order: pointerdown, gotpointercapture, lostpointercapture (buttons 0), pointerup.
+    it('keeps the stroke when capture is lost just before pointerup (released while moving)', () => {
       const el = mount();
       const seen = changes(el);
       pointer(el, 'pointerdown', [10, 10]);
       pointer(el, 'pointermove', [60, 10]);
-      pointer(el, 'lostpointercapture');
+      pointer(el, 'lostpointercapture', [60, 10], { buttons: 0 });
+      pointer(el, 'pointerup', [70, 10], { buttons: 0 });
+      expect(el.matches(':state(drawing)')).toBe(false);
+      expect(seen).toHaveLength(1);
+      expect(exportedStrokes(el.value)).toHaveLength(1);
+      expect(inkStrokes(el)).toHaveLength(1);
+    });
+
+    it('keeps the stroke when capture is lost after release and no pointerup arrives', () => {
+      const el = mount();
+      const seen = changes(el);
+      pointer(el, 'pointerdown', [10, 10]);
+      pointer(el, 'pointermove', [60, 10]);
+      pointer(el, 'lostpointercapture', [60, 10], { buttons: 0 });
+      expect(el.matches(':state(drawing)')).toBe(false);
+      expect(seen).toHaveLength(1);
+      expect(exportedStrokes(el.value)).toHaveLength(1);
+    });
+
+    it('ends the stroke when a move arrives with no button pressed, and hovering adds nothing', () => {
+      const el = mount();
+      const seen = changes(el);
+      pointer(el, 'pointerdown', [10, 10]);
+      pointer(el, 'pointermove', [60, 10]);
+      // The pointerup went elsewhere; the next hover moves report no buttons.
+      pointer(el, 'pointermove', [90, 40], { buttons: 0 });
+      pointer(el, 'pointermove', [120, 60], { buttons: 0 });
+      expect(el.matches(':state(drawing)')).toBe(false);
+      expect(seen).toHaveLength(1);
+      const points = el.toJSON()!.strokes[0]!.points.map((p) => [Math.round(p.x), Math.round(p.y)]);
+      expect(points).toEqual([
+        [10, 10],
+        [60, 10],
+      ]);
+    });
+
+    it('drops the stroke when capture is taken away while the button is still pressed', () => {
+      const el = mount();
+      const seen = changes(el);
+      pointer(el, 'pointerdown', [10, 10]);
+      pointer(el, 'pointermove', [60, 10]);
+      // E.g. the field's <dialog> closed mid-stroke.
+      pointer(el, 'lostpointercapture', [60, 10], { buttons: 1 });
       expect(el.matches(':state(drawing)')).toBe(false);
       expect(inkStrokes(el)).toHaveLength(0);
       draw(el, [[10, 50], [80, 50]], { pointerType: 'touch', pointerId: 7 });
@@ -325,19 +378,16 @@ describe('<digital-signature-field>', () => {
       expect(exportedStrokes(el.value)).toHaveLength(1);
     });
 
-    it('is dropped when the same pointer goes down again, which starts a new stroke', () => {
+    it('keeps a stroke whose pointerup never came when the same pointer goes down again, and starts a new one', () => {
       const el = mount();
       const seen = changes(el);
       pointer(el, 'pointerdown', [10, 10]);
       pointer(el, 'pointermove', [60, 10]);
-      // Its pointerup went elsewhere (e.g. the field's <dialog> closed mid-stroke).
       draw(el, [[10, 50], [80, 50]]);
       expect(el.matches(':state(drawing)')).toBe(false);
-      expect(seen).toHaveLength(1);
-      expect(exportedStrokes(el.value)).toHaveLength(1);
-      expect(inkStrokes(el)).toHaveLength(1);
-      // The new stroke, not the stale one continued.
-      expect(el.toJSON()!.strokes[0]!.points[0]).toMatchObject({ x: 10, y: 50 });
+      expect(seen).toHaveLength(2);
+      expect(exportedStrokes(el.value)).toHaveLength(2);
+      expect(el.toJSON()!.strokes.map((s) => s.points[0]!.y)).toEqual([10, 50]);
     });
 
     it('leaves no partial ink behind when the field is removed mid-stroke', () => {
@@ -356,7 +406,7 @@ describe('<digital-signature-field>', () => {
   describe('dsf-stroke-end for a dropped stroke', () => {
     const cases: Array<[string, (el: DigitalSignatureFieldElement) => void]> = [
       ['pointercancel', (el) => pointer(el, 'pointercancel', [60, 10])],
-      ['lost pointer capture', (el) => pointer(el, 'lostpointercapture')],
+      ['capture lost while pressed', (el) => pointer(el, 'lostpointercapture', [60, 10], { buttons: 1 })],
       ['disabled mid-stroke', (el) => (el.disabled = true)],
       ['readonly mid-stroke', (el) => (el.readOnly = true)],
       ['a value loaded mid-stroke', (el) => (el.value = null)],

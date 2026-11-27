@@ -303,7 +303,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.#area.addEventListener('pointermove', this.#onPointerMove);
     this.#area.addEventListener('pointerup', this.#onPointerUp);
     this.#area.addEventListener('pointercancel', this.#onPointerCancel);
-    this.#area.addEventListener('lostpointercapture', this.#onPointerCancel);
+    this.#area.addEventListener('lostpointercapture', this.#onLostPointerCapture);
     this.addEventListener('keydown', this.#onKeyDown);
   }
 
@@ -312,7 +312,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.#area.removeEventListener('pointermove', this.#onPointerMove);
     this.#area.removeEventListener('pointerup', this.#onPointerUp);
     this.#area.removeEventListener('pointercancel', this.#onPointerCancel);
-    this.#area.removeEventListener('lostpointercapture', this.#onPointerCancel);
+    this.#area.removeEventListener('lostpointercapture', this.#onLostPointerCapture);
     this.removeEventListener('keydown', this.#onKeyDown);
     this.#dropActive();
   }
@@ -780,9 +780,9 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     if (e.button !== 0 || this.#locked) return;
     if (this.#active) {
       // Another pointer while one is drawing (a second finger) is ignored. The same pointer going down
-      // again means the stroke in progress is stale: its pointerup went elsewhere and never came.
+      // again means its previous pointerup went elsewhere and never came: that stroke was finished, keep it.
       if (this.#active.pointerId !== e.pointerId) return;
-      this.#dropActive();
+      this.#endActive();
     }
     e.preventDefault();
     try {
@@ -805,6 +805,11 @@ export class DigitalSignatureFieldElement extends HTMLElement {
 
   readonly #onPointerMove = (e: PointerEvent): void => {
     if (!this.#active || e.pointerId !== this.#active.pointerId) return;
+    // No button pressed: the stroke was released and its pointerup went elsewhere. End it; a hover adds nothing.
+    if (e.buttons === 0) {
+      this.#endActive();
+      return;
+    }
     this.#active.stroke.points.push(this.#point(e));
     if (!this.#active.started && strokeLength(this.#active.stroke) >= this.minStrokeLength) {
       this.#active.started = true;
@@ -814,7 +819,15 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   };
 
   readonly #onPointerUp = (e: PointerEvent): void => {
-    if (!this.#active || e.pointerId !== this.#active.pointerId) return;
+    if (this.#active?.pointerId === e.pointerId) this.#endActive();
+  };
+
+  /**
+   * The button was released: keeps the stroke in progress (a tap is still discarded) and fires `change`.
+   * Reached from pointerup, and from every release whose pointerup comes late or never reaches the area.
+   */
+  #endActive(): void {
+    if (!this.#active) return;
     const { stroke, size, started } = this.#active;
     this.#setActive(null);
     if (strokeLength(stroke) < this.minStrokeLength) {
@@ -826,16 +839,27 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.#history.push({ size, base, strokes: [...strokes, stroke] });
     this.#commit();
     this.#dispatchStroke('dsf-stroke-end', this.#strokes.length);
-  };
+  }
 
   /** `dsf-stroke-start` (the stroke became long enough to keep) / `dsf-stroke-end` (it was kept), with the stroke count including it. */
   #dispatchStroke(type: 'dsf-stroke-start' | 'dsf-stroke-end', strokeCount: number): void {
     this.dispatchEvent(new CustomEvent(type, { bubbles: true, detail: { strokeCount } }));
   }
 
-  /** `pointercancel` or `lostpointercapture`: the stroke in progress will get no pointerup, so it is dropped. */
+  /** `pointercancel`: the browser took the gesture over, so the stroke in progress is dropped. */
   readonly #onPointerCancel = (e: PointerEvent): void => {
     if (this.#active?.pointerId === e.pointerId) this.#dropActive();
+  };
+
+  /**
+   * `lostpointercapture`. With the button already released it is the end of the stroke: Chrome sends it
+   * *before* pointerup when the mouse is released while still moving, so the stroke is kept. With the
+   * button still pressed, capture was taken away (e.g. the field's dialog closed): the stroke is dropped.
+   */
+  readonly #onLostPointerCapture = (e: PointerEvent): void => {
+    if (this.#active?.pointerId !== e.pointerId) return;
+    if (e.buttons === 0) this.#endActive();
+    else this.#dropActive();
   };
 
   /**

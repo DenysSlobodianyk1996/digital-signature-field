@@ -3,6 +3,7 @@ import { DigitalSignatureFieldElement } from './digital-signature-field';
 export { DigitalSignatureFieldElement };
 export type { HistoryState } from './digital-signature-field';
 export type { SignatureData } from './value';
+export type { ValueFormat } from './serialize';
 
 declare global {
   interface HTMLElementTagNameMap {

@@ -1,3 +1,4 @@
+import { decodeSvgDataUrl, parseImageDataUrl, parseSvg, type BaseImage } from './image';
 import type { Point, Size, Stroke } from './ink';
 
 /** Lossless signature data: the strokes and the drawing-area size they were drawn in (docs/api.md). */
@@ -11,14 +12,17 @@ export interface SignatureData {
     width: number;
     points: Array<{ x: number; y: number; pressure: number; t: number }>;
   }>;
+  /** A loaded PNG or foreign-SVG base layer (a data URL), painted under the strokes to fit `width` x `height`. */
+  image?: string;
 }
 
 /**
- * A signature loaded from outside (ADR-0006). It shows as ink but is not undoable stroke by stroke.
- * Today it is always strokes; a PNG or foreign SVG (#12) will add an image next to them.
+ * A signature loaded from outside (ADR-0006). It shows as ink but is not undoable stroke by stroke:
+ * strokes (field-made SVG or signature data), an image (PNG or foreign SVG), or an image with strokes.
  */
 export interface BaseLayer {
   strokes: readonly Stroke[];
+  image?: BaseImage;
 }
 
 /** What a loaded value turns into: the base layer and the size its coordinates are in. */
@@ -30,8 +34,8 @@ export interface LoadedValue {
 /** Namespace of the element that carries signature data inside an exported SVG. */
 const DATA_NS = 'https://github.com/DenysSlobodianyk1996/digital-signature-field';
 
-export function toSignatureData(strokes: readonly Stroke[], size: Size): SignatureData {
-  return {
+export function toSignatureData(strokes: readonly Stroke[], size: Size, image?: BaseImage): SignatureData {
+  const data: SignatureData = {
     version: 1,
     width: size.width,
     height: size.height,
@@ -41,6 +45,8 @@ export function toSignatureData(strokes: readonly Stroke[], size: Size): Signatu
       points: s.points.map(({ x, y, pressure, t }) => ({ x, y, pressure, t })),
     })),
   };
+  if (image) data.image = image.href;
+  return data;
 }
 
 const escapeText = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -81,29 +87,18 @@ export function fromSignatureData(data: unknown): LoadedValue | null {
   }
   const strokes = data['strokes'].map(toStroke);
   if (strokes.some((s) => s === null)) return null;
-  return { size: { width, height }, base: { strokes: strokes as Stroke[] } };
-}
-
-function decodeSvgDataUrl(url: string): string | null {
-  const match = /^data:image\/svg\+xml(;[^,]*)?,(.*)$/s.exec(url.trim());
-  if (!match) return null;
-  const [, params = '', body = ''] = match;
-  try {
-    if (/;base64$/i.test(params)) {
-      return new TextDecoder().decode(Uint8Array.from(atob(body), (c) => c.charCodeAt(0)));
-    }
-    return decodeURIComponent(body);
-  } catch {
-    return null;
+  const base: BaseLayer = { strokes: strokes as Stroke[] };
+  if (data['image'] !== undefined) {
+    const image = typeof data['image'] === 'string' ? parseImageDataUrl(data['image']) : null;
+    if (!image) return null;
+    base.image = image;
   }
+  return { size: { width, height }, base };
 }
 
 /** Reads the signature data an SVG exported by the field carries. Parsed as XML, never inserted into the page. */
-function fromSvgDataUrl(url: string): LoadedValue | null {
-  const xml = decodeSvgDataUrl(url);
-  if (xml === null) return null;
-  const doc = new DOMParser().parseFromString(xml, 'image/svg+xml');
-  const carrier = doc.getElementsByTagNameNS(DATA_NS, 'signature')[0];
+function fromFieldSvg(xml: string): LoadedValue | null {
+  const carrier = parseSvg(xml)?.getElementsByTagNameNS(DATA_NS, 'signature')[0];
   if (!carrier?.textContent) return null;
   try {
     return fromSignatureData(JSON.parse(carrier.textContent));
@@ -112,11 +107,19 @@ function fromSvgDataUrl(url: string): LoadedValue | null {
   }
 }
 
+/** A PNG or foreign SVG: the whole picture becomes the base layer, at its own size. */
+function fromImage(url: string): LoadedValue | null {
+  const image = parseImageDataUrl(url);
+  return image && { size: image.size, base: { strokes: [], image } };
+}
+
 /**
  * Turns a written `value` into what the field loads. `null` means "empty the field": the value was
- * `null`, an empty string, or something the field cannot read yet (PNG and foreign SVG come with #12).
+ * `null`, an empty string, or something the field cannot read (not signature data, PNG or SVG).
  */
 export function parseValue(value: unknown): LoadedValue | null {
-  if (typeof value === 'string') return value.trim() === '' ? null : fromSvgDataUrl(value);
-  return fromSignatureData(value);
+  if (typeof value !== 'string') return fromSignatureData(value);
+  if (value.trim() === '') return null;
+  const xml = decodeSvgDataUrl(value);
+  return (xml !== null && fromFieldSvg(xml)) || fromImage(value);
 }

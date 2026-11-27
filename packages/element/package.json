@@ -1,0 +1,26 @@
+{
+  "name": "@digital-signature-field/element",
+  "version": "0.0.0",
+  "description": "A hand-drawn signature as a form field: a dependency-free <digital-signature-field> custom element.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": true,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DenysSlobodianyk1996/digital-signature-field.git",
+    "directory": "packages/element"
+  }
+}

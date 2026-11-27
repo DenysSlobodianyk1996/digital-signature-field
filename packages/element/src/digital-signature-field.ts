@@ -587,7 +587,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   /** The present ink, or nothing at the drawing area's current size. */
   get #inkOrBlank(): Ink {
     if (this.#inkToExport) return this.#inkToExport;
-    const rect = this.#area.getBoundingClientRect();
+    const rect = this.#surface();
     return { size: { width: rect.width || 300, height: rect.height || 150 }, base: null, strokes: [] };
   }
 

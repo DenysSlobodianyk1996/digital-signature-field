@@ -4,6 +4,7 @@ export { DigitalSignatureFieldElement };
 export type { HistoryState } from './digital-signature-field';
 export type { ActionsPosition, Labels } from './actions';
 export type { SignatureData } from './value';
+export type { Styles } from './styles';
 
 declare global {
   interface HTMLElementTagNameMap {

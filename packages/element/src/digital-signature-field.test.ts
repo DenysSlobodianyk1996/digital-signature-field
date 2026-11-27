@@ -20,11 +20,15 @@ function area(el: DigitalSignatureFieldElement): HTMLElement {
 function draw(
   el: DigitalSignatureFieldElement,
   points: Point[],
-  { pointerType = 'mouse', pointerId = 1 }: { pointerType?: string; pointerId?: number } = {},
+  {
+    pointerType = 'mouse',
+    pointerId = 1,
+    pressures,
+  }: { pointerType?: string; pointerId?: number; pressures?: number[] } = {},
 ): void {
   const target = area(el);
   const rect = target.getBoundingClientRect();
-  const send = (type: string, [x, y]: Point) =>
+  const send = (type: string, [x, y]: Point, i: number) =>
     target.dispatchEvent(
       new PointerEvent(type, {
         bubbles: true,
@@ -35,15 +39,13 @@ function draw(
         isPrimary: true,
         button: type === 'pointermove' ? -1 : 0,
         buttons: type === 'pointerup' ? 0 : 1,
-        pressure: type === 'pointerup' ? 0 : 0.5,
+        pressure: type === 'pointerup' ? 0 : (pressures?.[i] ?? 0.5),
         clientX: rect.left + x,
         clientY: rect.top + y,
       }),
     );
-  const [first, ...rest] = points;
-  send('pointerdown', first!);
-  for (const p of rest) send('pointermove', p);
-  send('pointerup', points[points.length - 1]!);
+  points.forEach((p, i) => send(i === 0 ? 'pointerdown' : 'pointermove', p, i));
+  send('pointerup', points[points.length - 1]!, points.length - 1);
 }
 
 function changes(el: DigitalSignatureFieldElement): Array<string | null> {
@@ -52,10 +54,31 @@ function changes(el: DigitalSignatureFieldElement): Array<string | null> {
   return seen;
 }
 
+/** The rendered ink: one element per stroke (a polyline, path, or group of segments). */
+function inkStrokes(el: DigitalSignatureFieldElement): Element[] {
+  return [...el.shadowRoot!.querySelector('[part~="ink"]')!.children];
+}
+
+/** Every stroke colour/width painted for one rendered stroke (the element itself or its segments). */
+function paint(stroke: Element): { colors: string[]; widths: number[] } {
+  const painted = [stroke, ...stroke.querySelectorAll('*')].filter((n) => n.hasAttribute('stroke-width'));
+  const inherited = (n: Element, attr: string): string | null =>
+    n.getAttribute(attr) ?? (n === stroke ? null : stroke.getAttribute(attr));
+  return {
+    colors: [...new Set(painted.map((n) => inherited(n, 'stroke')!))],
+    widths: [...new Set(painted.map((n) => Number(n.getAttribute('stroke-width'))))],
+  };
+}
+
 function decodeSvg(dataUrl: string): Document {
   const base64 = dataUrl.replace(/^data:image\/svg\+xml;base64,/, '');
   const xml = new TextDecoder().decode(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)));
   return new DOMParser().parseFromString(xml, 'image/svg+xml');
+}
+
+/** The strokes in an exported SVG value (everything but the background rect). */
+function exportedStrokes(dataUrl: string): Element[] {
+  return [...decodeSvg(dataUrl).documentElement.children].filter((n) => n.localName !== 'rect');
 }
 
 afterEach(() => {
@@ -94,8 +117,8 @@ describe('<digital-signature-field>', () => {
     draw(el, [[10, 50], [60, 80]]);
     expect(seen).toHaveLength(2);
     expect(seen[1]).not.toBe(seen[0]);
-    expect(decodeSvg(seen[0]!).querySelectorAll('polyline')).toHaveLength(1);
-    expect(decodeSvg(seen[1]!).querySelectorAll('polyline')).toHaveLength(2);
+    expect(exportedStrokes(seen[0]!)).toHaveLength(1);
+    expect(exportedStrokes(seen[1]!)).toHaveLength(2);
   });
 
   it.each(['mouse', 'touch', 'pen'])('draws with %s input', (pointerType) => {
@@ -105,7 +128,7 @@ describe('<digital-signature-field>', () => {
   });
 
   it('ignores a second pointer while the first one is drawing', () => {
-    const el = mount();
+    const el = mount({ smoothing: '0' });
     const seen = changes(el);
     const target = area(el);
     const rect = target.getBoundingClientRect();
@@ -123,6 +146,18 @@ describe('<digital-signature-field>', () => {
     const lines = decodeSvg(seen[0]!).querySelectorAll('polyline');
     expect(lines).toHaveLength(1);
     expect(lines[0]!.getAttribute('points')).toBe('10,10 50,10');
+  });
+
+  it('stops listening when removed from the page and listens again when re-added', () => {
+    const el = mount();
+    const seen = changes(el);
+    el.remove();
+    draw(el, [[10, 10], [80, 10]]);
+    expect(el.value).toBeNull();
+    expect(seen).toEqual([]);
+    document.body.append(el);
+    draw(el, [[10, 10], [80, 10]]);
+    expect(seen).toHaveLength(1);
   });
 
   it('treats strokes shorter than min-stroke-length as taps', () => {
@@ -144,6 +179,105 @@ describe('<digital-signature-field>', () => {
     expect(decodeSvg(el.value!).documentElement.getAttribute('viewBox')).toBe(`0 0 ${width} ${height}`);
   });
 
+  describe('pen', () => {
+    it('draws with pen-color #000 and pen-width 2 by default', () => {
+      const el = mount();
+      draw(el, [[10, 10], [60, 10]]);
+      expect(el.penColor).toBe('#000');
+      expect(el.penWidth).toBe(2);
+      expect(paint(inkStrokes(el)[0]!)).toEqual({ colors: ['#000'], widths: [2] });
+    });
+
+    it('uses the current pen-color and pen-width for new strokes only', () => {
+      const el = mount({ 'pen-color': '#c00', 'pen-width': '4' });
+      draw(el, [[10, 10], [60, 10]]);
+      el.penColor = '#1a3fbf';
+      el.penWidth = 6;
+      expect(el.getAttribute('pen-color')).toBe('#1a3fbf');
+      expect(el.getAttribute('pen-width')).toBe('6');
+      draw(el, [[10, 50], [60, 50]]);
+      const [first, second] = inkStrokes(el);
+      expect(paint(first!)).toEqual({ colors: ['#c00'], widths: [4] });
+      expect(paint(second!)).toEqual({ colors: ['#1a3fbf'], widths: [6] });
+      expect(exportedStrokes(el.value!).map((s) => paint(s))).toEqual([
+        { colors: ['#c00'], widths: [4] },
+        { colors: ['#1a3fbf'], widths: [6] },
+      ]);
+    });
+  });
+
+  describe('smoothing', () => {
+    const zigzag: Point[] = [[10, 10], [40, 60], [70, 30], [100, 90], [130, 10]];
+
+    it('renders strokes as smooth curves by default (smoothing 0.5)', () => {
+      const el = mount();
+      expect(el.smoothing).toBe(0.5);
+      draw(el, zigzag);
+      const [stroke] = inkStrokes(el);
+      expect(stroke!.localName).toBe('path');
+      expect(stroke!.getAttribute('d')).toMatch(/^M10,10 C/);
+      expect(exportedStrokes(el.value!)[0]!.getAttribute('d')).toBe(stroke!.getAttribute('d'));
+    });
+
+    it('renders raw polylines with smoothing 0', () => {
+      const el = mount({ smoothing: '0' });
+      draw(el, zigzag);
+      const [stroke] = inkStrokes(el);
+      expect(stroke!.localName).toBe('polyline');
+      expect(stroke!.getAttribute('points')).toBe('10,10 40,60 70,30 100,90 130,10');
+    });
+
+    it('draws more rounded curves as smoothing grows', () => {
+      const curve = (smoothing: string) => {
+        const el = mount({ smoothing });
+        draw(el, zigzag);
+        return (inkStrokes(el)[0] as SVGGeometryElement).getBBox().height;
+      };
+      // A rounder curve overshoots the zigzag's corners further.
+      expect(curve('1')).toBeGreaterThan(curve('0.2'));
+    });
+
+    it('keeps the stored points raw: turning smoothing off shows the exact input', () => {
+      const el = mount();
+      draw(el, zigzag);
+      el.smoothing = 0;
+      expect(el.getAttribute('smoothing')).toBe('0');
+      const [stroke] = inkStrokes(el);
+      expect(stroke!.localName).toBe('polyline');
+      expect(stroke!.getAttribute('points')).toBe('10,10 40,60 70,30 100,90 130,10');
+    });
+  });
+
+  describe('pressure', () => {
+    const line: Point[] = [[10, 10], [40, 10], [70, 10], [100, 10], [130, 10]];
+    const pressures = [0.1, 0.3, 0.6, 0.9, 1];
+
+    it('is off by default: the width stays constant even when the pen reports pressure', () => {
+      const el = mount({ 'pen-width': '4' });
+      expect(el.pressure).toBe(false);
+      draw(el, line, { pointerType: 'pen', pressures });
+      expect(paint(inkStrokes(el)[0]!).widths).toEqual([4]);
+    });
+
+    it.each(['0', '0.5'])('varies the width along the stroke when on and the pen reports pressure (smoothing %s)', (smoothing) => {
+      const el = mount({ 'pen-width': '4', smoothing });
+      el.pressure = true;
+      expect(el.hasAttribute('pressure')).toBe(true);
+      draw(el, line, { pointerType: 'pen', pressures });
+      const { widths } = paint(inkStrokes(el)[0]!);
+      expect(widths.length).toBeGreaterThan(2);
+      expect(widths[widths.length - 1]).toBeGreaterThan(widths[0]!);
+      expect(inkStrokes(el)).toHaveLength(1);
+      expect(paint(exportedStrokes(el.value!)[0]!).widths).toEqual(widths);
+    });
+
+    it('keeps the width constant when the device reports no pressure data', () => {
+      const el = mount({ 'pen-width': '4', pressure: '' });
+      draw(el, line, { pointerType: 'mouse' });
+      expect(paint(inkStrokes(el)[0]!).widths).toEqual([4]);
+    });
+  });
+
   describe('legacy regressions', () => {
     it('a tap does not produce a value', () => {
       const el = mount();
@@ -155,17 +289,67 @@ describe('<digital-signature-field>', () => {
       expect(el.shadowRoot!.querySelector('[part~="ink"]')!.childElementCount).toBe(0);
     });
   
+    describe('no scaling: resizing the drawing area cropped the drawing', () => {
+      /** Where the stroke is painted, relative to the drawing area's top-left corner. */
+      const placed = (el: DigitalSignatureFieldElement, stroke: Element) => {
+        const a = area(el).getBoundingClientRect();
+        const r = stroke.getBoundingClientRect();
+        return { left: r.left - a.left, top: r.top - a.top, right: r.right - a.left, bottom: r.bottom - a.top, width: r.width, height: r.height, area: a };
+      };
+      const corners: Point[] = [[20, 20], [380, 20], [380, 180], [20, 180], [20, 20]];
+
+      it.each([
+        ['narrower (window resize)', (el: HTMLElement) => (el.style.width = '200px'), 0.5],
+        ['wider', (el: HTMLElement) => (el.style.width = '800px'), 1],
+        ['lower (CSS height change)', (el: HTMLElement) => el.style.setProperty('--dsf-height', '100px'), 0.5],
+        ['taller', (el: HTMLElement) => el.style.setProperty('--dsf-height', '400px'), 1],
+      ])('keeps every stroke in proportion and uncropped when the area gets %s', (_, resize, scale) => {
+        const el = mount({ smoothing: '0' });
+        el.style.setProperty('--dsf-border', 'none');
+        el.style.setProperty('--dsf-height', '200px');
+        draw(el, corners);
+        draw(el, [[100, 100], [300, 100]]);
+        const before = inkStrokes(el).map((s) => placed(el, s));
+        resize(el);
+        const after = inkStrokes(el).map((s) => placed(el, s));
+        for (const [i, b] of before.entries()) {
+          const a = after[i]!;
+          expect(a.left).toBeGreaterThanOrEqual(0);
+          expect(a.top).toBeGreaterThanOrEqual(0);
+          expect(a.right).toBeLessThanOrEqual(a.area.width + 0.5);
+          expect(a.bottom).toBeLessThanOrEqual(a.area.height + 0.5);
+          expect(a.width).toBeCloseTo(b.width * scale, 0);
+          expect(a.height).toBeCloseTo(b.height * scale, 0);
+        }
+        // Centred in the resized area.
+        const box = after[0]!;
+        expect(box.left + box.width / 2).toBeCloseTo(box.area.width / 2, 0);
+        expect(box.top + box.height / 2).toBeCloseTo(box.area.height / 2, 0);
+      });
+
+      it('keeps new ink under the pointer after a resize', () => {
+        const el = mount({ smoothing: '0' });
+        el.style.setProperty('--dsf-border', 'none');
+        draw(el, corners);
+        el.style.width = '200px';
+        draw(el, [[50, 60], [150, 60]]);
+        const stroke = placed(el, inkStrokes(el)[1]!);
+        expect(stroke.left).toBeCloseTo(50, 0);
+        expect(stroke.right).toBeCloseTo(150, 0);
+        expect(stroke.top).toBeCloseTo(60, 0);
+      });
+    });
+
     it('strokes are not stored as DOM ids', () => {
       const el = mount();
       draw(el, [[10, 10], [60, 10]]);
       draw(el, [[10, 50], [60, 50]]);
       draw(el, [[10, 90], [60, 90]]);
       const ink = el.shadowRoot!.querySelector('[part~="ink"]')!;
-      expect(ink.querySelectorAll('polyline')).toHaveLength(3);
+      expect(inkStrokes(el)).toHaveLength(3);
       expect(ink.querySelectorAll('[id]')).toHaveLength(0);
-      const exported = decodeSvg(el.value!);
-      expect(exported.querySelectorAll('polyline')).toHaveLength(3);
-      expect(exported.querySelectorAll('[id]')).toHaveLength(0);
+      expect(exportedStrokes(el.value!)).toHaveLength(3);
+      expect(decodeSvg(el.value!).querySelectorAll('[id]')).toHaveLength(0);
     });
   });
 });

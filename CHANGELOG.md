@@ -1,3 +1,13 @@
+## 1.0.1 (2026-11-27)
+
+### 🩹 Fixes
+
+- **element:** keep strokes released while the mouse is still moving ([b65e790](https://github.com/DenysSlobodianyk1996/digital-signature-field/commit/b65e790))
+
+### ❤️ Thank You
+
+- Denys Slobodianyk @DenysSlobodianyk1996
+
 # 1.0.0 (2026-11-27)
 
 ### 🚀 Features

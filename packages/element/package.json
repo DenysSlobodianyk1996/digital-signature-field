@@ -1,6 +1,6 @@
 {
   "name": "@digital-signature-field/element",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A hand-drawn signature as a form field: a dependency-free <digital-signature-field> custom element.",
   "keywords": [
     "signature",

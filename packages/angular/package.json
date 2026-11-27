@@ -1,6 +1,6 @@
 {
   "name": "@digital-signature-field/angular",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Angular wrapper (<dsf-signature>) for the <digital-signature-field> custom element. Angular 17.2+.",
   "keywords": [
     "angular",

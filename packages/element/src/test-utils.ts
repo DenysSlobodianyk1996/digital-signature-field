@@ -77,7 +77,9 @@ export function decodeSvg(dataUrl: string): Document {
   return new DOMParser().parseFromString(xml, 'image/svg+xml');
 }
 
-/** The strokes in an exported SVG value (everything but the background rect). */
+/** The strokes in an exported SVG value (everything but the background rect and the embedded signature data). */
 export function exportedStrokes(dataUrl: string): Element[] {
-  return [...decodeSvg(dataUrl).documentElement.children].filter((n) => n.localName !== 'rect');
+  return [...decodeSvg(dataUrl).documentElement.children].filter(
+    (n) => n.localName !== 'rect' && n.localName !== 'metadata',
+  );
 }

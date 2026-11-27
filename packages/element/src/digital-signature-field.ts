@@ -515,7 +515,11 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   }
 
   set labels(value: Partial<Labels> | null | undefined) {
-    this.#labels = { ...DEFAULT_LABELS, ...value };
+    const labels = { ...DEFAULT_LABELS };
+    for (const [key, text] of Object.entries(value ?? {})) {
+      if (typeof text === 'string' && key in labels) labels[key as keyof Labels] = text;
+    }
+    this.#labels = labels;
     this.#renderActions();
     this.#updateEmptyState();
   }
@@ -728,6 +732,9 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   /** Ctrl/Cmd+Z undoes; Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y redo. Keydowns reach the host only while focus is inside the field. */
   readonly #onKeyDown = (e: KeyboardEvent): void => {
     if (this.#locked || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+    // Only from the field's own parts: a slotted control (e.g. an <input> in `actions-end`) keeps its own Ctrl+Z.
+    const origin = e.composedPath()[0];
+    if (!(origin instanceof Node) || !this.shadowRoot!.contains(origin)) return;
     const key = e.key.toLowerCase();
     const action: HistoryAction | null =
       key === 'z' ? (e.shiftKey ? 'redo' : 'undo') : key === 'y' && !e.shiftKey ? 'redo' : null;

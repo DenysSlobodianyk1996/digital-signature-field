@@ -322,6 +322,22 @@ describe('keyboard shortcuts', () => {
     expect(seen).toEqual([]);
   });
 
+  it('leaves the shortcuts to a slotted control that has focus', async () => {
+    const el = drawnTwice();
+    const input = document.createElement('input');
+    input.slot = 'actions-end';
+    el.append(input);
+    input.focus();
+    const seen = changes(el);
+    let prevented: boolean | null = null;
+    input.addEventListener('keydown', (e) => setTimeout(() => (prevented = e.defaultPrevented)));
+    await userEvent.keyboard('{Control>}z{/Control}');
+    await new Promise((r) => setTimeout(r));
+    expect(seen).toEqual([]);
+    expect(lines(el.value)).toBe(2);
+    expect(prevented).toBe(false);
+  });
+
   it('makes the drawing area focusable', () => {
     const el = mount();
     area(el).focus();

@@ -53,9 +53,10 @@ describe('<digital-signature-field>', () => {
     const seen = changes(el);
     const target = area(el);
     const rect = target.getBoundingClientRect();
+    const [left, top] = [rect.left + target.clientLeft, rect.top + target.clientTop];
     const at = (type: string, pointerId: number, x: number, y: number) =>
       target.dispatchEvent(
-        new PointerEvent(type, { bubbles: true, composed: true, pointerId, pointerType: 'touch', clientX: rect.left + x, clientY: rect.top + y }),
+        new PointerEvent(type, { bubbles: true, composed: true, pointerId, pointerType: 'touch', clientX: left + x, clientY: top + y }),
       );
     at('pointerdown', 1, 10, 10);
     at('pointerdown', 2, 100, 100);
@@ -103,11 +104,13 @@ describe('<digital-signature-field>', () => {
     expect(seen).toEqual(['dsf-stroke-start:1', 'dsf-stroke-end:1', 'dsf-stroke-start:2', 'dsf-stroke-end:2']);
   });
 
-  it('renders the ink as SVG with a viewBox matching the drawing area, and exports the same viewBox', () => {
+  it('renders the ink as SVG with a viewBox matching the drawing area (inside its border), and exports the same viewBox', () => {
     const el = mount();
     el.style.setProperty('--dsf-height', '150px');
     draw(el, [[10, 10], [60, 40]]);
-    const { width, height } = area(el).getBoundingClientRect();
+    // The default 1px border is not part of the drawing surface: 400x152 border box -> 398x150.
+    const { clientWidth: width, clientHeight: height } = area(el);
+    expect([width, height]).toEqual([398, 150]);
     const ink = el.shadowRoot!.querySelector('[part~="ink"]')!;
     expect(ink.getAttribute('viewBox')).toBe(`0 0 ${width} ${height}`);
     expect(decodeSvg(el.value!).documentElement.getAttribute('viewBox')).toBe(`0 0 ${width} ${height}`);
@@ -224,11 +227,20 @@ describe('<digital-signature-field>', () => {
     });
   
     describe('no scaling: resizing the drawing area cropped the drawing', () => {
-      /** Where the stroke is painted, relative to the drawing area's top-left corner. */
+      /**
+       * Where the stroke's geometry is painted, relative to the drawing area's top-left corner. Uses the
+       * geometry box mapped to the screen, not getBoundingClientRect(): Firefox's includes a conservative
+       * stroke outline (about 0.7px here), Chromium's and WebKit's do not.
+       */
       const placed = (el: DigitalSignatureFieldElement, stroke: Element) => {
         const a = area(el).getBoundingClientRect();
-        const r = stroke.getBoundingClientRect();
-        return { left: r.left - a.left, top: r.top - a.top, right: r.right - a.left, bottom: r.bottom - a.top, width: r.width, height: r.height, area: a };
+        const shape = stroke as SVGGraphicsElement;
+        const box = shape.getBBox();
+        const ctm = shape.getScreenCTM()!;
+        const tl = new DOMPoint(box.x, box.y).matrixTransform(ctm);
+        const br = new DOMPoint(box.x + box.width, box.y + box.height).matrixTransform(ctm);
+        const r = { left: tl.x, top: tl.y, right: br.x, bottom: br.y };
+        return { left: r.left - a.left, top: r.top - a.top, right: r.right - a.left, bottom: r.bottom - a.top, width: r.right - r.left, height: r.bottom - r.top, area: a };
       };
       const corners: Point[] = [[20, 20], [380, 20], [380, 180], [20, 180], [20, 20]];
 

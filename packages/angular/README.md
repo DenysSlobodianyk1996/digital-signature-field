@@ -2,6 +2,8 @@
 
 `<dsf-signature>`: an Angular wrapper for the [`<digital-signature-field>`](https://www.npmjs.com/package/@digital-signature-field/element) custom element, a hand-drawn signature that works as a form field. One package supports Angular 17.2 and later.
 
+[Live demos](https://denysslobodianyk1996.github.io/digital-signature-field/) ([Angular](https://denysslobodianyk1996.github.io/digital-signature-field/angular/), [Angular 17](https://denysslobodianyk1996.github.io/digital-signature-field/angular-17/)) · [API reference](https://github.com/DenysSlobodianyk1996/digital-signature-field/blob/main/docs/api.md) · [Source](https://github.com/DenysSlobodianyk1996/digital-signature-field)
+
 ## Install
 
 ```bash
@@ -137,3 +139,11 @@ async download() { const png = await this.signature().toPNG({ scale: 2 }); /* �
 ## Server-side rendering
 
 `<dsf-signature>` is safe to render on the server. The element package is loaded with a dynamic import after the first render in the browser, and the element is only touched once it is defined. The server output contains an empty `<digital-signature-field>`, which upgrades on the client.
+
+## Versioning
+
+`@digital-signature-field/angular` depends on `@digital-signature-field/element` at exactly its own version: both packages are released together with one shared version, from GitHub Actions with npm provenance. Changes: [CHANGELOG](https://github.com/DenysSlobodianyk1996/digital-signature-field/blob/main/CHANGELOG.md).
+
+## License
+
+MIT

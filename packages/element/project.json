@@ -36,6 +36,14 @@
         "command": "vitest run"
       }
     },
+    "pack": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "cwd": "{projectRoot}",
+        "command": "node ../../tools/check-package.mjs ."
+      }
+    },
     "serve": {
       "executor": "nx:run-commands",
       "continuous": true,

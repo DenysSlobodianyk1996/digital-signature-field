@@ -2,7 +2,23 @@
   "name": "@digital-signature-field/angular",
   "version": "0.0.0",
   "description": "Angular wrapper (<dsf-signature>) for the <digital-signature-field> custom element. Angular 17.2+.",
+  "keywords": [
+    "angular",
+    "signature",
+    "signature-pad",
+    "e-signature",
+    "signal-forms",
+    "reactive-forms",
+    "control-value-accessor",
+    "form-field",
+    "web-component"
+  ],
+  "homepage": "https://denysslobodianyk1996.github.io/digital-signature-field/",
+  "bugs": {
+    "url": "https://github.com/DenysSlobodianyk1996/digital-signature-field/issues"
+  },
   "license": "MIT",
+  "author": "Denys Slobodianyk",
   "sideEffects": false,
   "peerDependencies": {
     "@angular/core": ">=17.2.0",
@@ -26,12 +42,13 @@
     "zone.js": "~0.14.4"
   },
   "publishConfig": {
+    "access": "public",
     "directory": "dist",
     "linkDirectory": true
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/DenysSlobodianyk1996/digital-signature-field.git",
+    "url": "https://github.com/DenysSlobodianyk1996/digital-signature-field",
     "directory": "packages/angular"
   }
 }

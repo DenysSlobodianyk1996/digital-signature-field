@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 345" width="560" height="345" font-family="system-ui, -apple-system, Segoe UI, sans-serif">
+  <rect width="560" height="345" fill="#ffffff"/>
+  <text x="20" y="26" font-size="15" font-weight="600" fill="#111827">Variant 3 — Side rail (actions-position="end")</text>
+  <rect x="20" y="44" width="520" height="266" rx="10" fill="none" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="6 4"/>
+  <text x="30" y="60" font-size="11" fill="#2563eb">&lt;digital-signature-field actions="undo redo clear" actions-position="end"&gt;</text>
+  <!-- drawing area -->
+  <rect x="36" y="70" width="420" height="224" rx="6" fill="#f9fafb" stroke="#d1d5db"/>
+  <line x1="56" y1="250" x2="436" y2="250" stroke="#d1d5db" stroke-dasharray="4 4"/>
+  <path d="M70,230 C85,150 110,140 112,215 S140,265 160,190 S195,135 205,205 S240,245 260,185 S300,150 307,215 C315,245 345,185 370,195 S410,210 430,185" fill="none" stroke="#111827" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- rail -->
+  <rect x="470" y="70" width="54" height="224" rx="6" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="479" y="82" width="36" height="36" rx="6" fill="#fff" stroke="#9ca3af"/>
+  <text x="497" y="106" font-size="18" text-anchor="middle" fill="#111827">↶</text>
+  <rect x="479" y="126" width="36" height="36" rx="6" fill="#fff" stroke="#d1d5db"/>
+  <text x="497" y="150" font-size="18" text-anchor="middle" fill="#9ca3af">↷</text>
+  <rect x="479" y="246" width="36" height="36" rx="6" fill="#fff" stroke="#9ca3af"/>
+  <text x="497" y="270" font-size="16" text-anchor="middle" fill="#b91c1c">✕</text>
+  <text x="497" y="200" font-size="9" text-anchor="middle" fill="#9ca3af">icons +</text>
+  <text x="497" y="212" font-size="9" text-anchor="middle" fill="#9ca3af">aria-label</text>
+  <text x="24" y="333" font-size="10" fill="#6b7280">In dir="rtl" the rail moves to the left edge (start/end are logical sides).</text>
+</svg>

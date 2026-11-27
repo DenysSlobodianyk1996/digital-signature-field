@@ -13,10 +13,10 @@ import {
   viewChild,
 } from '@angular/core';
 import '@digital-signature-field/element';
-import type { DigitalSignatureFieldElement } from '@digital-signature-field/element';
+import type { DigitalSignatureFieldElement, SignatureData } from '@digital-signature-field/element';
 
-/** The field's value: an SVG data URL, or `null` while the field is empty. */
-export type DsfSignatureValue = string | null;
+/** The field's value: a data URL or `SignatureData` (per `value-format`), or `null` while empty. */
+export type DsfSignatureValue = string | SignatureData | null;
 
 /**
  * `<dsf-signature>`: renders `<digital-signature-field>` and carries its value.
@@ -41,7 +41,7 @@ export type DsfSignatureValue = string | null;
   styles: [':host { display: block; }'],
 })
 export class DsfSignature {
-  /** The signature: an SVG data URL, or `null` while the field is empty. Two-way: `[(value)]`. */
+  /** The signature (an SVG data URL by default), or `null` while the field is empty. Two-way: `[(value)]`. */
   readonly value = model<DsfSignatureValue>(null);
   /** Disables drawing. */
   readonly disabled = input(false);
@@ -57,15 +57,12 @@ export class DsfSignature {
   protected readonly isDisabled = computed(() => this.disabled() || this.#cvaDisabled());
 
   constructor() {
-    // Push programmatic value writes down to the element. Writing back the value the element just
-    // emitted is skipped, so a round-trip through a form never resets the drawing.
+    // Push value writes down to the element. The element ignores a write of the value it already
+    // has, so the round-trip of a value it just emitted keeps the drawing and its history.
     effect(() => {
       const value = this.value();
       const el = this.field()?.nativeElement;
-      if (el && el.value !== value) {
-        // Reflect.set: the element may not accept writes yet (no setter) and must not throw.
-        Reflect.set(el, 'value', value);
-      }
+      if (el) el.value = value;
     });
   }
 

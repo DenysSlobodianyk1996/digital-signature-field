@@ -38,10 +38,19 @@ describe('<dsf-signature dsfCva> with reactive forms (Angular 17)', () => {
     expect(control.touched).toBe(true);
   });
 
-  it('keeps the control pristine when the form writes a value', async () => {
-    const { fixture, control } = await render();
-    control.setValue(null);
+  it('loads values the form writes into the field without marking the control dirty', async () => {
+    const { fixture, field, control } = await render();
+    draw(field);
     await fixture.whenStable();
+    const saved = control.value;
+
+    control.reset();
+    fixture.detectChanges(); // the test body runs outside the Angular zone
+    expect(field.value).toBeNull();
+
+    control.setValue(saved);
+    fixture.detectChanges();
+    expect(field.value).toBe(saved);
     expect(control.dirty).toBe(false);
   });
 

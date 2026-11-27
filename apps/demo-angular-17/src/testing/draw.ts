@@ -1,8 +1,10 @@
+import type { DigitalSignatureFieldElement } from '@digital-signature-field/element';
+
 type Point = [x: number, y: number];
 
 /** The `<digital-signature-field>` rendered by the first `<dsf-signature>` under `root`. */
-export function signatureField(root: Element): HTMLElement {
-  const el = root.querySelector<HTMLElement>('dsf-signature digital-signature-field');
+export function signatureField(root: Element): DigitalSignatureFieldElement {
+  const el = root.querySelector<DigitalSignatureFieldElement>('dsf-signature digital-signature-field');
   if (!el) throw new Error('no <digital-signature-field> inside <dsf-signature>');
   return el;
 }

@@ -20,6 +20,14 @@
         "command": "ngc -p tsconfig.lib.json --noEmit"
       }
     },
+    "test": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "cwd": "{projectRoot}",
+        "command": "node --test test/ssr.test.mjs"
+      }
+    },
     "lint": {
       "executor": "nx:run-commands",
       "options": {

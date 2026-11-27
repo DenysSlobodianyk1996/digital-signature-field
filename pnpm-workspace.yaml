@@ -3,3 +3,9 @@ packages:
   - apps/*
 onlyBuiltDependencies:
   - nx
+packageExtensions:
+  # @angular/animations 17 imports @angular/common without declaring it, so under pnpm it would
+  # pick up the hoisted (latest) copy. Used by the angular package's SSR test (platform-server 17).
+  '@angular/animations@17':
+    peerDependencies:
+      '@angular/common': '17'

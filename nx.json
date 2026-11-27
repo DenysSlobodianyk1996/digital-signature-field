@@ -17,6 +17,7 @@
       "!{projectRoot}/index.html",
       "!{projectRoot}/**/*.spec.ts",
       "!{projectRoot}/src/testing/**/*",
+      "!{projectRoot}/test/**/*",
       "!{projectRoot}/e2e/**/*",
       "!{projectRoot}/playwright.config.ts",
       "!{projectRoot}/karma.conf.cjs",

@@ -10,3 +10,4 @@ __screenshots__/
 out-tsc/
 test-results/
 playwright-report/
+.vitest/

@@ -6,3 +6,5 @@ coverage/
 __screenshots__/
 *.log
 .DS_Store
+test-results/
+playwright-report/

@@ -1,0 +1,32 @@
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  padding: 16px;
+  color: #1b1b1f;
+  background: #fff;
+}
+
+main {
+  display: block;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+form {
+  display: grid;
+  gap: 12px;
+}
+
+form > button,
+form > img {
+  justify-self: start;
+}
+
+output {
+  display: block;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  word-break: break-all;
+  max-height: 8em;
+  overflow: auto;
+}

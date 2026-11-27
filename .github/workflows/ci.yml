@@ -38,5 +38,5 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium firefox webkit
 
-      - name: Lint, type-check, build and test (affected)
-        run: pnpm nx affected -t lint typecheck build test --outputStyle=static
+      - name: Lint, type-check, build, test and e2e (affected)
+        run: pnpm nx affected -t lint typecheck build test e2e --outputStyle=static

@@ -2,7 +2,10 @@
 
 A hand-drawn signature as a real form field: a framework-free web component (`<digital-signature-field>`) with an Angular wrapper, usable from Angular, React, Vue and plain HTML.
 
-> **Status: design phase.** This repository currently holds the design docs only; no package is published yet. Everything below describes the planned `1.0` API ([API reference](docs/api.md)).
+[![npm: @digital-signature-field/element](https://img.shields.io/npm/v/@digital-signature-field/element?label=%40digital-signature-field%2Felement)](https://www.npmjs.com/package/@digital-signature-field/element)
+[![npm: @digital-signature-field/angular](https://img.shields.io/npm/v/@digital-signature-field/angular?label=%40digital-signature-field%2Fangular)](https://www.npmjs.com/package/@digital-signature-field/angular)
+[![CI](https://github.com/DenysSlobodianyk1996/digital-signature-field/actions/workflows/ci.yml/badge.svg)](https://github.com/DenysSlobodianyk1996/digital-signature-field/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/npm/l/@digital-signature-field/element)](LICENSE)
 
 - **Works as a form field everywhere.** It joins native `<form>`s (`name`, `required`, reset). Angular forms work in every flavour (signal, reactive and template-driven). React and Vue use the element directly.
 - **Draws with native Pointer Events, no dependencies.** Mouse, touch and pen, with smoothing and optional pressure.
@@ -29,7 +32,7 @@ All four are deployed as one GitHub Pages site ([index](https://denysslobodianyk
 | `@digital-signature-field/element` | The `<digital-signature-field>` custom element | none |
 | `@digital-signature-field/angular` | `<dsf-signature>` component + `dsfCva` directive | `@angular/core` & `@angular/forms` `>=17.2` |
 
-Both packages are always released together with the same version.
+Both packages are always released together with the same version, from GitHub Actions with npm provenance ([CHANGELOG](CHANGELOG.md)).
 
 ## Install
 
@@ -60,7 +63,7 @@ npm i @digital-signature-field/element
 </script>
 ```
 
-No bundler? Load it from a CDN: `<script type="module" src="https://cdn.jsdelivr.net/npm/@digital-signature-field/element@1/+esm"></script>`.
+No bundler? Load it from a CDN: `<script type="module" src="https://cdn.jsdelivr.net/npm/@digital-signature-field/element/+esm"></script>`.
 
 ### Angular
 
@@ -273,7 +276,7 @@ See the five layout variants in [docs/variants](docs/variants/README.md) and the
 - [docs/adr](docs/adr) — architecture decisions
 - [docs/legacy-analysis.md](docs/legacy-analysis.md) — what the original Angular 9 component did and the bugs this design fixes
 
-## Development (planned)
+## Development
 
 Nx + pnpm monorepo:
 
@@ -288,8 +291,10 @@ pnpm install
 pnpm nx serve demo-angular        # or demo-react / demo-vue / demo-angular-17
 pnpm nx run-many -t test e2e
 pnpm nx e2e-pages site            # build the Pages site into apps/site/dist and check it
-pnpm nx release                   # CI only
+pnpm nx run-many -t pack          # npm pack --dry-run: what each package would publish
 ```
+
+Releases run from GitHub Actions only: **Actions → Release → Run workflow** on `main` (`.github/workflows/release.yml`). `nx release` gives both packages one version from the conventional commits (or the version you enter), updates `CHANGELOG.md`, tags `v<version>`, and publishes both packages with npm provenance through npm trusted publishing (ADR-0009). Pushing a `v*` tag publishes that tag's versions.
 
 ## License
 

@@ -1,6 +1,6 @@
 # digital-signature-field
 
-A hand-drawn signature as a form field: a framework-free custom element (`@digital-signature-field/element`) plus an Angular wrapper (`@digital-signature-field/angular`), with demo apps for Angular, React and Vue. See `README.md`. The repo is in its design phase; the decisions are in `docs/adr/` and the planned API in `docs/api.md`.
+A hand-drawn signature as a form field: a framework-free custom element (`@digital-signature-field/element`) plus an Angular wrapper (`@digital-signature-field/angular`), with demo apps for Angular, React and Vue. See `README.md`. The decisions are in `docs/adr/` and the API in `docs/api.md`.
 
 ## Development
 
@@ -20,8 +20,12 @@ pnpm nx serve demo-react                      # or demo-vue: Vite dev server on 
 DSF_DEMO_BASE=/react/ pnpm nx build demo-react # any demo builds under a sub-path (must end in /; Angular: --base-href)
 pnpm nx e2e-pages site                        # GitHub Pages site: all demos under their sub-paths in apps/site/dist, checked by Playwright
 pnpm nx preview-pages site                    # serve it like GitHub Pages at http://localhost:4390/digital-signature-field/
-pnpm nx affected -t lint typecheck build test e2e   # what CI runs (.github/workflows/ci.yml)
+pnpm nx run-many -t pack                      # npm pack --dry-run per package, checked by tools/check-package.mjs
+pnpm nx release 0.1.0 --dry-run --skip-publish  # preview version bump + CHANGELOG (real releases: release.yml in CI only)
+pnpm nx affected -t lint typecheck build test e2e pack   # what CI runs (.github/workflows/ci.yml)
 ```
+
+- Releases (ADR-0009): `nx.json` `release` = fixed version for `element` + `angular`, conventional commits, root `CHANGELOG.md`, tag `v{version}`. `.github/workflows/release.yml` (manual dispatch on main, or a pushed `v*` tag) versions and publishes via npm trusted publishing (OIDC, no `NPM_TOKEN`). The angular package publishes from `packages/angular/dist`; its build runs `scripts/publishable-manifest.mjs`, which turns `workspace:*` into the element's exact version and drops the workspace-only `publishConfig.directory/linkDirectory`. On 0.x, Nx maps a conventional `feat` to a patch bump; pass an explicit version for minor releases.
 
 - Browser tests (seam 1, the element's public contract) live next to the source as `packages/element/src/*.test.ts`, configured in `packages/element/vitest.config.ts`. They import `@digital-signature-field/element` (aliased to `src/index.ts`) and drive only the public surface: synthetic pointer events on `::part(area)`, `change` events, `value`.
 - Angular forms tests (seam 2) live in the apps, not the package: `apps/demo-angular/src/*.spec.ts` (Angular unit-test builder, Vitest browser mode, Chromium) cover `[formField]`, `formControlName`, `ngModel` and the wrapper's inputs/outputs/methods; `apps/demo-angular-17/src/*.spec.ts` (Karma + Jasmine in Playwright's Chromium) cover CVA mode (`dsfCva`) with reactive and template-driven forms. `packages/angular/test/ssr.test.mjs` (`nx test angular`, `node --test`) server-renders the built wrapper with Angular 17.2's platform-server. Smoke tests: `apps/*/e2e/*.spec.ts`.

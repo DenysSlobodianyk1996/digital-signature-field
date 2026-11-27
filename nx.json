@@ -49,6 +49,40 @@
       "dependsOn": ["build"],
       "inputs": ["default", "^production"],
       "cache": true
+    },
+    "pack": {
+      "dependsOn": ["build"],
+      "inputs": ["production", "^production", "{workspaceRoot}/tools/check-package.mjs"],
+      "cache": true
+    },
+    "nx-release-publish": {
+      "dependsOn": ["build", "pack"],
+      "options": {
+        "access": "public"
+      }
+    }
+  },
+  "release": {
+    "projects": ["element", "angular"],
+    "projectsRelationship": "fixed",
+    "releaseTag": {
+      "pattern": "v{version}"
+    },
+    "version": {
+      "conventionalCommits": true,
+      "fallbackCurrentVersionResolver": "disk",
+      "preserveLocalDependencyProtocols": true
+    },
+    "changelog": {
+      "automaticFromRef": true,
+      "workspaceChangelog": {
+        "file": "{workspaceRoot}/CHANGELOG.md",
+        "createRelease": "github"
+      },
+      "projectChangelogs": false
+    },
+    "git": {
+      "commitMessage": "chore(release): publish {version}"
     }
   }
 }

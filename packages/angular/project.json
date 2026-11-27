@@ -10,7 +10,8 @@
       "outputs": ["{projectRoot}/dist"],
       "options": {
         "cwd": "{projectRoot}",
-        "command": "ng-packagr -p ng-package.json -c tsconfig.lib.json"
+        "commands": ["ng-packagr -p ng-package.json -c tsconfig.lib.json", "node scripts/publishable-manifest.mjs"],
+        "parallel": false
       }
     },
     "typecheck": {
@@ -26,6 +27,19 @@
       "options": {
         "cwd": "{projectRoot}",
         "command": "node --test test/ssr.test.mjs"
+      }
+    },
+    "pack": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "cwd": "{projectRoot}",
+        "command": "node ../../tools/check-package.mjs dist"
+      }
+    },
+    "nx-release-publish": {
+      "options": {
+        "packageRoot": "{projectRoot}/dist"
       }
     },
     "lint": {

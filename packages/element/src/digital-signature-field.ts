@@ -598,11 +598,19 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   }
 
   /**
+   * The box the ink is painted in: the ink SVG fills the area inside its border, and its viewBox is fitted
+   * into exactly this box. Sizes and pointer positions are measured here, not on the area's border box.
+   */
+  #surface(): DOMRect {
+    return this.#ink.getBoundingClientRect();
+  }
+
+  /**
    * The pointer position in stroke coordinates. Strokes keep the size the area had when the first one
    * was drawn; the ink is scaled to fit the current area and centred (ADR-0004), so map back through that.
    */
   #point(e: PointerEvent): Point {
-    const rect = this.#area.getBoundingClientRect();
+    const rect = this.#surface();
     const size = this.#size ?? rect;
     const scale = Math.min(rect.width / size.width, rect.height / size.height) || 1;
     const offsetX = (rect.width - size.width * scale) / 2;
@@ -623,7 +631,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     } catch {
       // Synthetic or already-released pointers cannot be captured; drawing still works.
     }
-    const rect = this.#area.getBoundingClientRect();
+    const rect = this.#surface();
     const size = (!this.empty && this.#history.present.size) || { width: rect.width, height: rect.height };
     this.#active = {
       pointerId: e.pointerId,

@@ -17,7 +17,10 @@ export function area(el: DigitalSignatureFieldElement): HTMLElement {
   return el.shadowRoot!.querySelector<HTMLElement>('[part~="area"]')!;
 }
 
-/** Sends a synthetic pointer sequence (down, moves, up) to the drawing area, in area coordinates. */
+/**
+ * Sends a synthetic pointer sequence (down, moves, up) to the drawing area, in drawing-surface
+ * coordinates: relative to the inside of the area's border, where the ink is painted.
+ */
 export function draw(
   el: DigitalSignatureFieldElement,
   points: Point[],
@@ -41,8 +44,8 @@ export function draw(
         button: type === 'pointermove' ? -1 : 0,
         buttons: type === 'pointerup' ? 0 : 1,
         pressure: type === 'pointerup' ? 0 : (pressures?.[i] ?? 0.5),
-        clientX: rect.left + x,
-        clientY: rect.top + y,
+        clientX: rect.left + target.clientLeft + x,
+        clientY: rect.top + target.clientTop + y,
       }),
     );
   points.forEach((p, i) => send(i === 0 ? 'pointerdown' : 'pointermove', p, i));

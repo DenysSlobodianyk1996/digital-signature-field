@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DigitalSignatureFieldElement, SignatureData } from '@digital-signature-field/element';
 import { decodeSvg, draw, exportedStrokes, mount } from './test-utils';
 
@@ -357,6 +357,29 @@ describe('in a form', () => {
     const { form, el } = inForm({ 'value-format': 'png' });
     draw(el, [[10, 10], [60, 10]]);
     expect(new FormData(form).get('signature')).toBe(el.value);
+  });
+
+  it.each([
+    ['a PNG', () => solidPng(41, 21, '#f00'), [255, 0, 0, 255]],
+    ['a foreign SVG', () => svgUrl(FOREIGN_SVG.replace('#00f', '#0f0')), [0, 255, 0, 255]],
+  ] as const)('png values: a loaded %s is in the submitted PNG once it has decoded', async (_, image, rgba) => {
+    const { form, el } = inForm({ 'value-format': 'png' });
+    el.value = image();
+    await vi.waitFor(async () => {
+      const submitted = await png(new FormData(form).get('signature'));
+      expect(submitted.at(Math.floor(submitted.width / 2), Math.floor(submitted.height / 2))).toEqual(rgba);
+    });
+  });
+
+  it('png values: strokes drawn before the loaded image decoded are submitted with the image', async () => {
+    const { form, el } = inForm({ 'value-format': 'png' });
+    el.value = solidPng(397, 199, '#f00');
+    draw(el, [[10, 10], [100, 10]]);
+    await vi.waitFor(async () => {
+      const submitted = await png(new FormData(form).get('signature'));
+      expect(submitted.at(300, 150)).toEqual([255, 0, 0, 255]);
+      expect(submitted.at(50, 10)).not.toEqual([255, 0, 0, 255]);
+    });
   });
 
   it('a loaded image satisfies required and min-strokes', () => {

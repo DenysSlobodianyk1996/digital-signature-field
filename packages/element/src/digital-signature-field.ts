@@ -613,10 +613,18 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   set value(value: string | SignatureData | null) {
     if (this.#isCurrentValue(value)) return;
     const loaded = parseValue(value);
-    if (loaded) void prepareImages(loaded);
     const state: InkState = loaded ? { size: loaded.size, base: loaded.base, strokes: [] } : EMPTY;
     this.#initialState ??= state;
     this.#load(state);
+    if (loaded?.base.image) void prepareImages(loaded).then(() => this.#syncDecodedImage(loaded.base));
+  }
+
+  /**
+   * A PNG value is painted synchronously, so a base image still decoding is missing from it. Once the
+   * image has decoded, report the value to the form again while that base layer is still shown.
+   */
+  #syncDecodedImage(base: BaseLayer): void {
+    if (this.#history.present.base === base && this.valueFormat === 'png') this.#syncForm();
   }
 
   #isCurrentValue(value: unknown): boolean {

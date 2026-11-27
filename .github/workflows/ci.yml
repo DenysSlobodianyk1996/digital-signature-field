@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  main:
+    runs-on: ubuntu-latest
+    env:
+      NX_NO_CLOUD: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Sets NX_BASE / NX_HEAD for `nx affected`.
+      - uses: nrwl/nx-set-shas@v4
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+
+      # test: element browser tests + Angular forms tests (seam 2); e2e: demo-app smoke tests (seam 3);
+      # pack: `npm pack --dry-run` of each package, which must hold only build output, types,
+      # README and LICENSE, with a publishable manifest (tools/check-package.mjs).
+      - name: Lint, type-check, build, test, e2e and pack (affected)
+        run: pnpm nx affected -t lint typecheck build test e2e pack --outputStyle=static
+
+      # The GitHub Pages site (ADR-0010): rebuilds the demos under their sub-paths, so it runs after
+      # the step above, never alongside the apps' own build/e2e tasks (same dist directories).
+      - name: Pages site (build under sub-paths + e2e)
+        run: pnpm nx e2e-pages site --outputStyle=static

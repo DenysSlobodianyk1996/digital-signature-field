@@ -12,7 +12,7 @@
 | `required` | `required` | `boolean` | `false` | Invalid (`valueMissing`) while the field is empty. |
 | `disabled` | `disabled` | `boolean` | `false` | Blocks drawing and all actions. Excluded from form submission. |
 | `readonly` | `readOnly` | `boolean` | `false` | Shows the ink and blocks drawing and actions. Still submitted. |
-| — | `value` | `string \| SignatureData \| null` | `null` | Setting it loads a base layer and **does not** emit `change`. Setting the value the field already has does nothing, so the history is kept. |
+| — | `value` | `string \| SignatureData \| null` | `null` | Setting it loads a base layer and **does not** emit `change`. Accepts an SVG or PNG data URL, `SignatureData`, or its JSON text (what a `json` field submits to its form). Setting the value the field already has does nothing, so the history is kept. |
 | `value-format` | `valueFormat` | `'svg' \| 'png' \| 'json'` | `'svg'` | Format of `value` and of the `change` detail. |
 | `background` | `background` | CSS colour \| `'transparent'` | `'#fff'` | Painted into exported `svg` and `png` values. |
 | `pen-color` | `penColor` | CSS colour | `'#000'` | Applies to new strokes. |
@@ -24,13 +24,13 @@
 | `history-limit` | `historyLimit` | `number` | `50` | Maximum number of undoable entries. |
 | `actions` | `actions` | space-separated tokens | `'undo clear'` | Tokens: `undo`, `redo`, `clear`, `color`, `width`, or `none`. |
 | `actions-position` | `actionsPosition` | `'bottom' \| 'top' \| 'start' \| 'end'` | `'bottom'` | `start` and `end` follow `dir`. |
-| — | `labels` | `Partial<Labels>` | English | `{ undo, redo, clear, color, width, drawingArea, emptyStatus, … }` |
+| — | `labels` | `Partial<Labels>` | English | `{ undo, redo, clear, color, width, thin, medium, thick, drawingArea, emptyStatus, signedStatus }`. `color` and `width` name the swatch and width groups; `thin`/`medium`/`thick` name the three widths; the status texts are announced by the live region (`status` part). Unset keys stay English. |
 | — | `penColors` | `string[]` | `['#000', '#1a3fbf']` | Swatches shown by the `color` action. |
 | — | `styles` | `string \| CSSStyleSheet \| Array<string \| CSSStyleSheet>` | — | Extra sheets added through `adoptedStyleSheets` (ADR-0007). |
 
 ### Read-only state
 
-`empty: boolean` · `canUndo: boolean` · `canRedo: boolean` · `validity` · `validationMessage` · `form`
+`empty: boolean` · `canUndo: boolean` · `canRedo: boolean` · `validity` · `validationMessage` · `willValidate` · `form`
 
 ### Methods
 
@@ -38,10 +38,11 @@
 | --- | --- |
 | `undo()` / `redo()` | Moves through history. Emits `change` and `dsf-history-change`. |
 | `clear()` | Removes all ink, base layer included, as one undoable entry (ADR-0006). |
-| `toSVG(): string` | SVG data URL, whatever `valueFormat` is set to. |
-| `toPNG(opts?: { scale?: number }): Promise<string>` | PNG data URL. |
-| `toJSON(): SignatureData \| null` | Lossless signature data. |
+| `toSVG(): string` | SVG data URL, whatever `valueFormat` is set to. An empty field gives the background only, at the drawing area's size. |
+| `toPNG(opts?: { scale?: number }): Promise<string>` | PNG data URL, `scale` (default `1`) times the drawing-area size. A `png` value is rendered at scale 1. |
+| `toJSON(): SignatureData \| null` | Lossless signature data; `null` while the field is empty. |
 | `focus()` | Focuses the drawing area. |
+| `checkValidity()` / `reportValidity()` | As on native inputs. `reportValidity()` shows the browser's validation message on the drawing area. |
 
 ### Events
 
@@ -49,12 +50,12 @@
 | --- | --- | --- |
 | `change` | `{ value }` | After each stroke ends, and after undo, redo and clear. Never fired when a value is loaded. |
 | `dsf-history-change` | `{ canUndo, canRedo, empty }` | Whenever any of the three changes. Use it to drive an external toolbar. |
-| `dsf-stroke-start` / `dsf-stroke-end` | `{ strokeCount }` | Pen down and pen up, for strokes that are kept. |
+| `dsf-stroke-start` / `dsf-stroke-end` | `{ strokeCount }` | Only for strokes that are kept, never for taps: `dsf-stroke-start` once the stroke in progress is long enough to keep (`min-stroke-length`), `dsf-stroke-end` at pen up, after `change`. `strokeCount` includes the stroke. Every `dsf-stroke-start` is paired with a `dsf-stroke-end`: when a started stroke is dropped instead of kept (`pointercancel`, lost pointer capture, the field locked, removed or loaded mid-stroke), `dsf-stroke-end` fires with no `change` and a `strokeCount` that does not include it. |
 | `blur` | — | Focus left the field. Wrappers map this to "touched". |
 
 ### Type exports
 
-`DigitalSignatureFieldElement` (the element class), `SignatureData`, `Labels`, `ValueFormat`. The subpath `@digital-signature-field/element/jsx-react` adds the tag to React's `JSX.IntrinsicElements`. Vue users declare it in `GlobalComponents` (recipe in the demo).
+`DigitalSignatureFieldElement` (the element class), `SignatureData`, `Labels`, `ValueFormat`, `Styles`. The subpath `@digital-signature-field/element/jsx-react` adds the tag to React's `JSX.IntrinsicElements`. Vue users declare it in `GlobalComponents` (recipe in the demo).
 
 ### `SignatureData`
 
@@ -68,8 +69,11 @@ interface SignatureData {
     width: number;
     points: Array<{ x: number; y: number; pressure: number; t: number }>;
   }>;
+  image?: string;         // a loaded PNG or foreign-SVG base layer (data URL), drawn under the strokes
 }
 ```
+
+A PNG data URL, or an SVG the field did not export, loads as a base-layer **image** at its own size; `toJSON()` then carries it in `image`. Loaded values are parsed, never injected as markup: an SVG image is shown as a picture, so scripts in it never run. Exports use the pen and `background` settings only, never computed page CSS.
 
 ### Styling
 
@@ -79,7 +83,7 @@ interface SignatureData {
 
 **Slots:** `actions` (replaces the bar's content), `actions-start`, `actions-end`, `placeholder` (shown in the drawing area while the field is empty).
 
-**State selectors:** `:state(empty)`, `:state(invalid)`, `:state(drawing)`, plus `[disabled]` and `[readonly]` on the host.
+**State selectors:** `:state(empty)`, `:state(invalid)`, `:state(drawing)`, plus `[disabled]` and `[readonly]` on the host. `:state(invalid)` is only set once the user has interacted with the field (a stroke, undo, redo, clear, or focus leaving it) or a submit was attempted, like `:user-invalid`; a form reset hides it again. `:disabled` also matches inside a disabled `<fieldset>`.
 
 ## `@digital-signature-field/angular`
 
@@ -88,15 +92,20 @@ interface SignatureData {
 | `DsfSignature` | standalone component `<dsf-signature>` | Wraps the element. Has the `FormValueControl` shape (ADR-0003). |
 | `DsfSignatureCva` | standalone directive `[dsfCva]` | CVA mode, for Angular 17–21 forms. |
 
-`<dsf-signature>` passes through every element property as an `input()` with the same camelCase name. Its form contract:
+`<dsf-signature>` passes through every element property as an `input()` with the same camelCase name (`name`, `valueFormat`, `background`, `penColor`, `penWidth`, `pressure`, `smoothing`, `minStrokes`, `minStrokeLength`, `historyLimit`, `actions`, `actionsPosition`, `labels`, `penColors`, `styles`). Unbound inputs keep the element's defaults, and an input set back to `undefined` restores the default. Each input is applied on its own, so changing one never re-applies the others (a pen colour the signer picked from the swatches stays until `penColor` itself changes). Its form contract:
 
 ```ts
 value    = model<string | SignatureData | null>(null);
-disabled = input(false);  readonly = input(false);
+disabled = input(false);  readonly = input(false);   // boolean attributes
 invalid  = input(false);  required = input(false);  touched = input(false);
-touch    = output<void>();
+name     = input('');
+touch    = output<void>();  // focus left the field, or a stroke ended while untouched
 ```
 
-The element's events are re-exposed as outputs: `historyChange` (`{ canUndo, canRedo, empty }`), `strokeStart` and `strokeEnd`. Value changes come through the `value` model (`[(value)]`).
+Loading a value from the form (or `[(value)]`) never marks the control dirty; drawing does. `invalid` adds the `dsf-invalid` class to the host.
 
-Imperative access is through `viewChild(DsfSignature)`: `.undo()`, `.redo()`, `.clear()`, `.toPNG()`, …
+The element's events are re-exposed as outputs: `historyChange` (`{ canUndo, canRedo, empty }`), `strokeStart` and `strokeEnd` (`DsfStrokeEvent`: `{ strokeCount }`), paired like the element's events: a dropped stroke emits `strokeEnd` with the unchanged count. Value changes come through the `value` model (`[(value)]`).
+
+Imperative access is through `viewChild(DsfSignature)`: `.undo()`, `.redo()`, `.clear()`, `.toSVG()`, `.toPNG()`, `.toJSON()`, `.focus()`. They throw before the element is available (on the server, or before the first browser render).
+
+**SSR:** the wrapper imports the element package with a dynamic `import()` after the first render in the browser, and touches the element only once it is defined. Server output contains an empty `<digital-signature-field>`.

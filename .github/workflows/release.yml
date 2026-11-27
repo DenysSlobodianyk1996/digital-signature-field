@@ -1,0 +1,122 @@
+# Releases @digital-signature-field/element and @digital-signature-field/angular together (ADR-0009).
+#
+# - Push to main (every merged PR): automatic release.
+#     * No v* tag yet -> first release, exactly 1.0.0.
+#     * Otherwise `nx release` derives the bump from the conventional commits since the last tag:
+#       fix -> patch, feat -> minor, `!`/BREAKING CHANGE -> major. Only chore/docs/ci/test/... -> no
+#       release, nothing is published.
+#   It bumps both packages to one version, writes CHANGELOG.md, commits `chore(release): publish x.y.z`,
+#   tags `v<version>`, pushes, creates the GitHub release, then publishes both packages to npm.
+#   That push uses GITHUB_TOKEN, so it never re-triggers this workflow (no release loop).
+# - Manual (workflow_dispatch on main): same, with an optional explicit version; dry-run by default.
+# - Tag (`v*` pushed, e.g. after a local `pnpm nx release --skip-publish`): publishes the tagged
+#   versions only.
+#
+# npm auth is trusted publishing (OIDC, #4/#18): no NPM_TOKEN. Each package's trusted publisher on
+# npmjs.com must name this file, `release.yml`. Provenance is attached automatically.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version or semver keyword (e.g. 1.0.0, patch, minor). Empty: 1.0.0 for the first release, then derived from conventional commits.'
+        required: false
+        default: ''
+      first-release:
+        description: 'First release of the packages (no previous v* tag)'
+        type: boolean
+        default: false
+      dry-run:
+        description: 'Dry run: show the version, changelog and tarballs without committing, tagging or publishing'
+        type: boolean
+        default: true
+  push:
+    # Either filter matching triggers the workflow.
+    branches: [main]
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write # release commit, tag and GitHub release
+  id-token: write # npm trusted publishing (OIDC) and provenance
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Releases are cut from main only (tag pushes publish whatever the tag holds).
+    if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    env:
+      NX_NO_CLOUD: true
+      DRY_RUN: ${{ inputs.dry-run && '--dry-run' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm >= 11.5.1 (pnpm publish hands the tarball to npm).
+      - run: npm install --global npm@^11.5.1
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # Tag pushes publish what the tag holds; branch pushes and manual runs version first.
+      - name: Decide the version
+        id: plan
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_FIRST: ${{ inputs.first-release }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            echo "mode=tag" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "mode=version" >> "$GITHUB_OUTPUT"
+          if [ -z "$(git tag --list 'v*')" ]; then
+            # Nothing released yet: the first release is 1.0.0 unless a version was entered.
+            echo "version=${INPUT_VERSION:-1.0.0}" >> "$GITHUB_OUTPUT"
+            echo "first=--first-release" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${INPUT_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "first=$([ "$INPUT_FIRST" = "true" ] && echo --first-release)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Version, changelog, tag and GitHub release
+        id: version
+        if: steps.plan.outputs.mode == 'version'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          FIRST_RELEASE: ${{ steps.plan.outputs.first }}
+        run: |
+          before=$(node -p "require('./packages/element/package.json').version")
+          pnpm nx release $VERSION --skip-publish $FIRST_RELEASE $DRY_RUN
+          after=$(node -p "require('./packages/element/package.json').version")
+          if [ -n "$DRY_RUN" ] || [ "$before" != "$after" ]; then
+            echo "released=true" >> "$GITHUB_OUTPUT"
+            echo "Release $after (was $before)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            echo "No releasable commits since v$before: nothing published." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Builds both packages, re-checks the tarballs (`pack`) and publishes them publicly.
+      - name: Publish to npm
+        if: steps.plan.outputs.mode == 'tag' || steps.version.outputs.released == 'true'
+        env:
+          FIRST_RELEASE: ${{ steps.plan.outputs.first }}
+        run: pnpm nx release publish $FIRST_RELEASE $DRY_RUN

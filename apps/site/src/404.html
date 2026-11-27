@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Page not found · digital-signature-field</title>
+    <script>
+      // GitHub Pages serves this page for any missing path. A path inside a demo is a client-side
+      // route: send it to that demo's index.html, carrying the route in `?dsf-route=`; the demo
+      // restores the original URL before it boots (see scripts/build-pages.mjs).
+      (function () {
+        var base = '%SITE_BASE%';
+        var demos = %DEMO_PATHS%;
+        var path = location.pathname;
+        if (path.indexOf(base) !== 0) return;
+        var rest = path.slice(base.length);
+        var demo = rest.split('/')[0];
+        if (demos.indexOf(demo) === -1 || rest.length <= demo.length + 1) return;
+        var route = rest.slice(demo.length + 1) + location.search;
+        location.replace(base + demo + '/?dsf-route=' + encodeURIComponent(route) + location.hash);
+      })();
+    </script>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 0;
+        padding: 16px;
+        color: #1b1b1f;
+        background: #fff;
+      }
+      main {
+        max-width: 640px;
+        margin: 0 auto;
+      }
+      a {
+        color: #1d4ed8;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Page not found</h1>
+      <p><a href="%SITE_BASE%">All demos</a></p>
+    </main>
+  </body>
+</html>

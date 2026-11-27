@@ -1,0 +1,128 @@
+import '@digital-signature-field/element';
+import type { DigitalSignatureFieldElement } from '@digital-signature-field/element';
+
+// Shared helpers for the browser tests (seam 1). They drive only the public surface.
+
+export function mount(attrs: Record<string, string> = {}): DigitalSignatureFieldElement {
+  const el = document.createElement('digital-signature-field');
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  el.style.width = '400px';
+  document.body.append(el);
+  return el;
+}
+
+export type Point = [x: number, y: number];
+
+export function area(el: DigitalSignatureFieldElement): HTMLElement {
+  return el.shadowRoot!.querySelector<HTMLElement>('[part~="area"]')!;
+}
+
+/**
+ * Sends a synthetic pointer sequence (down, moves, up) to the drawing area, in drawing-surface
+ * coordinates: relative to the inside of the area's border, where the ink is painted.
+ */
+export function draw(
+  el: DigitalSignatureFieldElement,
+  points: Point[],
+  {
+    pointerType = 'mouse',
+    pointerId = 1,
+    pressures,
+  }: { pointerType?: string; pointerId?: number; pressures?: number[] } = {},
+): void {
+  const target = area(el);
+  const rect = target.getBoundingClientRect();
+  const send = (type: string, [x, y]: Point, i: number) =>
+    target.dispatchEvent(
+      new PointerEvent(type, {
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+        pointerId,
+        pointerType,
+        isPrimary: true,
+        button: type === 'pointermove' ? -1 : 0,
+        buttons: type === 'pointerup' ? 0 : 1,
+        pressure: type === 'pointerup' ? 0 : (pressures?.[i] ?? 0.5),
+        clientX: rect.left + target.clientLeft + x,
+        clientY: rect.top + target.clientTop + y,
+      }),
+    );
+  points.forEach((p, i) => send(i === 0 ? 'pointerdown' : 'pointermove', p, i));
+  send('pointerup', points[points.length - 1]!, points.length - 1);
+}
+
+/** `change` details, in the default `svg` format (an SVG data URL or `null`). */
+export function changes(el: DigitalSignatureFieldElement): Array<string | null> {
+  const seen: Array<string | null> = [];
+  el.addEventListener('change', (e) => seen.push((e as CustomEvent<{ value: string | null }>).detail.value));
+  return seen;
+}
+
+/** The rendered ink: one element per stroke (a polyline, path, or group of segments). */
+export function inkStrokes(el: DigitalSignatureFieldElement): Element[] {
+  return [...el.shadowRoot!.querySelector('[part~="ink"]')!.children];
+}
+
+/** Every stroke colour/width painted for one rendered stroke (the element itself or its segments). */
+export function paint(stroke: Element): { colors: string[]; widths: number[] } {
+  const painted = [stroke, ...stroke.querySelectorAll('*')].filter((n) => n.hasAttribute('stroke-width'));
+  const inherited = (n: Element, attr: string): string | null =>
+    n.getAttribute(attr) ?? (n === stroke ? null : stroke.getAttribute(attr));
+  return {
+    colors: [...new Set(painted.map((n) => inherited(n, 'stroke')!))],
+    widths: [...new Set(painted.map((n) => Number(n.getAttribute('stroke-width'))))],
+  };
+}
+
+/** Parses an SVG data URL (a `value` in the default `svg` format). */
+export function decodeSvg(dataUrl: unknown): Document {
+  const base64 = String(dataUrl).replace(/^data:image\/svg\+xml;base64,/, '');
+  const xml = new TextDecoder().decode(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)));
+  return new DOMParser().parseFromString(xml, 'image/svg+xml');
+}
+
+/** Sends one synthetic pointer event to the drawing area, in drawing-surface coordinates. */
+export function pointer(
+  el: DigitalSignatureFieldElement,
+  type: string,
+  [x, y]: Point = [0, 0],
+  { pointerId = 1, pointerType = 'mouse' }: { pointerId?: number; pointerType?: string } = {},
+): void {
+  const target = area(el);
+  const rect = target.getBoundingClientRect();
+  const down = type === 'pointerdown' || type === 'pointermove';
+  target.dispatchEvent(
+    new PointerEvent(type, {
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+      pointerId,
+      pointerType,
+      isPrimary: true,
+      button: type === 'pointerdown' ? 0 : -1,
+      buttons: down ? 1 : 0,
+      pressure: down ? 0.5 : 0,
+      clientX: rect.left + target.clientLeft + x,
+      clientY: rect.top + target.clientTop + y,
+    }),
+  );
+}
+
+/** Records `dsf-stroke-start` / `dsf-stroke-end` as `type:strokeCount`. */
+export function strokeEvents(el: DigitalSignatureFieldElement): string[] {
+  const seen: string[] = [];
+  for (const type of ['dsf-stroke-start', 'dsf-stroke-end']) {
+    el.addEventListener(type, (e) =>
+      seen.push(`${type}:${(e as CustomEvent<{ strokeCount: number }>).detail.strokeCount}`),
+    );
+  }
+  return seen;
+}
+
+/** The strokes in an exported SVG value (everything but the background rect and the embedded signature data). */
+export function exportedStrokes(dataUrl: unknown): Element[] {
+  return [...decodeSvg(dataUrl).documentElement.children].filter(
+    (n) => n.localName !== 'rect' && n.localName !== 'metadata' && n.localName !== 'image',
+  );
+}

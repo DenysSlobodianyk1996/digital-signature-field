@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>digital-signature-field dev page</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 640px;
+        margin: 2rem auto;
+        padding: 0 16px;
+      }
+      output {
+        display: block;
+        margin-top: 1rem;
+        word-break: break-all;
+        font-family: ui-monospace, monospace;
+        font-size: 12px;
+      }
+      img {
+        display: block;
+        margin-top: 1rem;
+        max-width: 100%;
+        border: 1px dashed #aaa;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>&lt;digital-signature-field&gt;</h1>
+    <p>Draw in the box. Each kept stroke, undo, redo and clear fires <code>change</code>; a tap leaves no ink. Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z or Ctrl/Cmd+Y redoes.</p>
+
+    <digital-signature-field id="sig"></digital-signature-field>
+
+    <output id="value">value: null</output>
+    <img id="preview" alt="Exported value" hidden />
+
+    <script type="module">
+      import './src/index.ts';
+
+      const sig = document.querySelector('#sig');
+      const out = document.querySelector('#value');
+      const preview = document.querySelector('#preview');
+
+      sig.addEventListener('change', (e) => {
+        const { value } = e.detail;
+        out.textContent = `value: ${value === null ? 'null' : value.slice(0, 120) + '…'}`;
+        preview.hidden = value === null;
+        if (value) preview.src = value;
+      });
+    </script>
+  </body>
+</html>

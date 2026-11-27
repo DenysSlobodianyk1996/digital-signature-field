@@ -38,9 +38,9 @@
 | --- | --- |
 | `undo()` / `redo()` | Moves through history. Emits `change` and `dsf-history-change`. |
 | `clear()` | Removes all ink, base layer included, as one undoable entry (ADR-0006). |
-| `toSVG(): string` | SVG data URL, whatever `valueFormat` is set to. |
-| `toPNG(opts?: { scale?: number }): Promise<string>` | PNG data URL. |
-| `toJSON(): SignatureData \| null` | Lossless signature data. |
+| `toSVG(): string` | SVG data URL, whatever `valueFormat` is set to. An empty field gives the background only, at the drawing area's size. |
+| `toPNG(opts?: { scale?: number }): Promise<string>` | PNG data URL, `scale` (default `1`) times the drawing-area size. A `png` value is rendered at scale 1. |
+| `toJSON(): SignatureData \| null` | Lossless signature data; `null` while the field is empty. |
 | `focus()` | Focuses the drawing area. |
 | `checkValidity()` / `reportValidity()` | As on native inputs. `reportValidity()` shows the browser's validation message on the drawing area. |
 
@@ -55,7 +55,7 @@
 
 ### Type exports
 
-`DigitalSignatureFieldElement` (the element class), `SignatureData`, `Labels`, `ValueFormat`. The subpath `@digital-signature-field/element/jsx-react` adds the tag to React's `JSX.IntrinsicElements`. Vue users declare it in `GlobalComponents` (recipe in the demo).
+`DigitalSignatureFieldElement` (the element class), `SignatureData`, `Labels`, `ValueFormat`, `Styles`. The subpath `@digital-signature-field/element/jsx-react` adds the tag to React's `JSX.IntrinsicElements`. Vue users declare it in `GlobalComponents` (recipe in the demo).
 
 ### `SignatureData`
 
@@ -69,8 +69,11 @@ interface SignatureData {
     width: number;
     points: Array<{ x: number; y: number; pressure: number; t: number }>;
   }>;
+  image?: string;         // a loaded PNG or foreign-SVG base layer (data URL), drawn under the strokes
 }
 ```
+
+A PNG data URL, or an SVG the field did not export, loads as a base-layer **image** at its own size; `toJSON()` then carries it in `image`. Loaded values are parsed, never injected as markup: an SVG image is shown as a picture, so scripts in it never run. Exports use the pen and `background` settings only, never computed page CSS.
 
 ### Styling
 

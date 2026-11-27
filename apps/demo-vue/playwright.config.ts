@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 // Smoke test (seam 3) against the production build, served by `vite preview` under the same base path.
-const port = 4320;
+const port = 4329;
 const base = process.env.DSF_DEMO_BASE ?? '/';
 
 export default defineConfig({

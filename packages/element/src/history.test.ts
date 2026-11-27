@@ -29,7 +29,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-const lines = (value: string | null): number => (value ? exportedStrokes(value).length : 0);
+const lines = (value: unknown): number => (value ? exportedStrokes(value).length : 0);
 
 describe('history', () => {
   it('each stroke keeps its own pen colour and width through undo, redo and clear', () => {

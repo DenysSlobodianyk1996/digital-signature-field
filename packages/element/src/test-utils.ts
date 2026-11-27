@@ -17,7 +17,10 @@ export function area(el: DigitalSignatureFieldElement): HTMLElement {
   return el.shadowRoot!.querySelector<HTMLElement>('[part~="area"]')!;
 }
 
-/** Sends a synthetic pointer sequence (down, moves, up) to the drawing area, in area coordinates. */
+/**
+ * Sends a synthetic pointer sequence (down, moves, up) to the drawing area, in drawing-surface
+ * coordinates: relative to the inside of the area's border, where the ink is painted.
+ */
 export function draw(
   el: DigitalSignatureFieldElement,
   points: Point[],
@@ -41,14 +44,15 @@ export function draw(
         button: type === 'pointermove' ? -1 : 0,
         buttons: type === 'pointerup' ? 0 : 1,
         pressure: type === 'pointerup' ? 0 : (pressures?.[i] ?? 0.5),
-        clientX: rect.left + x,
-        clientY: rect.top + y,
+        clientX: rect.left + target.clientLeft + x,
+        clientY: rect.top + target.clientTop + y,
       }),
     );
   points.forEach((p, i) => send(i === 0 ? 'pointerdown' : 'pointermove', p, i));
   send('pointerup', points[points.length - 1]!, points.length - 1);
 }
 
+/** `change` details, in the default `svg` format (an SVG data URL or `null`). */
 export function changes(el: DigitalSignatureFieldElement): Array<string | null> {
   const seen: Array<string | null> = [];
   el.addEventListener('change', (e) => seen.push((e as CustomEvent<{ value: string | null }>).detail.value));
@@ -71,15 +75,16 @@ export function paint(stroke: Element): { colors: string[]; widths: number[] } {
   };
 }
 
-export function decodeSvg(dataUrl: string): Document {
-  const base64 = dataUrl.replace(/^data:image\/svg\+xml;base64,/, '');
+/** Parses an SVG data URL (a `value` in the default `svg` format). */
+export function decodeSvg(dataUrl: unknown): Document {
+  const base64 = String(dataUrl).replace(/^data:image\/svg\+xml;base64,/, '');
   const xml = new TextDecoder().decode(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)));
   return new DOMParser().parseFromString(xml, 'image/svg+xml');
 }
 
 /** The strokes in an exported SVG value (everything but the background rect and the embedded signature data). */
-export function exportedStrokes(dataUrl: string): Element[] {
+export function exportedStrokes(dataUrl: unknown): Element[] {
   return [...decodeSvg(dataUrl).documentElement.children].filter(
-    (n) => n.localName !== 'rect' && n.localName !== 'metadata',
+    (n) => n.localName !== 'rect' && n.localName !== 'metadata' && n.localName !== 'image',
   );
 }

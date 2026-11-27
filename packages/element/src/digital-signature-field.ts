@@ -14,9 +14,21 @@ import {
 } from './actions';
 import { FormField } from './form';
 import { History } from './history';
-import { strokeLength, toSvgDataUrl, type Point, type Size, type Stroke } from './ink';
+import { STYLING_CSS, toStyleSheets, type Styles } from './styles';
+import { strokeLength, type Point, type Size, type Stroke } from './ink';
 import { toSvgMarkup, type RenderOptions } from './render';
-import { parseValue, toSignatureData, type BaseLayer, type SignatureData } from './value';
+import {
+  baseImageMarkup,
+  prepareImages,
+  toData,
+  toPngDataUrl,
+  toSvgDataUrl,
+  VALUE_FORMATS,
+  type ExportOptions,
+  type Ink,
+  type ValueFormat,
+} from './serialize';
+import { parseValue, type BaseLayer, type SignatureData } from './value';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -83,7 +95,7 @@ const template = `
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #9ca3af;
+    color: #6b7280;
     pointer-events: none;
   }
   .placeholder[hidden] {
@@ -101,9 +113,11 @@ const template = `
     white-space: nowrap;
   }
   ${ACTIONS_CSS}
+  ${STYLING_CSS}
 </style>
 <div part="root" class="root" data-position="bottom">
   <div part="area" class="area" tabindex="0" role="img">
+    <div part="guide" class="guide" aria-hidden="true"></div>
     <svg part="ink" class="ink" xmlns="${SVG_NS}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
     <div class="placeholder"><slot name="placeholder"></slot></div>
   </div>
@@ -150,6 +164,8 @@ const DEFAULT_PEN_COLOR = '#000';
 const DEFAULT_PEN_WIDTH = 2;
 const DEFAULT_SMOOTHING = 0.5;
 const DEFAULT_HISTORY_LIMIT = 50;
+const DEFAULT_VALUE_FORMAT: ValueFormat = 'svg';
+const DEFAULT_BACKGROUND = '#fff';
 
 export class DigitalSignatureFieldElement extends HTMLElement {
   static readonly formAssociated = true;
@@ -176,6 +192,10 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   readonly #builtins: HTMLDivElement;
   readonly #status: HTMLDivElement;
   readonly #formField: FormField;
+
+  /** The `styles` value, and the sheets adopted for it (after the built-in styles). */
+  #styles: Styles | null = null;
+  #injectedSheets: CSSStyleSheet[] = [];
 
   #labels: Labels = DEFAULT_LABELS;
   #penColors: readonly string[] = DEFAULT_PEN_COLORS;
@@ -244,6 +264,11 @@ export class DigitalSignatureFieldElement extends HTMLElement {
       delete (this as { value?: unknown }).value;
       this.value = value as string | SignatureData | null;
     }
+    if (Object.hasOwn(this, 'styles')) {
+      const styles: unknown = (this as { styles?: unknown }).styles;
+      delete (this as { styles?: unknown }).styles;
+      this.styles = styles as Styles | null;
+    }
     this.#area.addEventListener('pointerdown', this.#onPointerDown);
     this.#area.addEventListener('pointermove', this.#onPointerMove);
     this.#area.addEventListener('pointerup', this.#onPointerUp);
@@ -257,7 +282,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.#area.removeEventListener('pointerup', this.#onPointerUp);
     this.#area.removeEventListener('pointercancel', this.#onPointerCancel);
     this.removeEventListener('keydown', this.#onKeyDown);
-    this.#active = null;
+    this.#setActive(null);
   }
 
   /** Called by the browser for `disabled` on the field or on an ancestor `<fieldset>`. */
@@ -322,6 +347,29 @@ export class DigitalSignatureFieldElement extends HTMLElement {
 
   get #renderOptions(): RenderOptions {
     return { smoothing: this.smoothing, pressure: this.pressure };
+  }
+
+  /** Format of `value` and of the `change` detail. Switching it emits nothing; the next `change` uses it. */
+  get valueFormat(): ValueFormat {
+    const format = this.getAttribute('value-format')?.trim().toLowerCase() as ValueFormat | undefined;
+    return format && VALUE_FORMATS.includes(format) ? format : DEFAULT_VALUE_FORMAT;
+  }
+
+  set valueFormat(value: ValueFormat) {
+    this.setAttribute('value-format', value);
+  }
+
+  /** Colour painted under the ink in SVG and PNG exports: any CSS colour, or `'transparent'`. */
+  get background(): string {
+    return this.getAttribute('background')?.trim() || DEFAULT_BACKGROUND;
+  }
+
+  set background(value: string) {
+    this.setAttribute('background', value);
+  }
+
+  get #exportOptions(): ExportOptions {
+    return { render: this.#renderOptions, background: this.background };
   }
 
   /** Maximum number of undoable entries (strokes and clears). Older entries are dropped first. */
@@ -450,6 +498,23 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.#renderActions();
   }
 
+  /**
+   * Extra style sheets, adopted after the built-in styles (ADR-0007). Setting it again replaces the
+   * previously injected sheets; `null` removes them. Selectors inside the shadow root are not covered by semver.
+   */
+  get styles(): Styles | null {
+    return this.#styles;
+  }
+
+  set styles(value: Styles | null | undefined) {
+    const sheets = toStyleSheets(value);
+    const root = this.shadowRoot!;
+    const previous = new Set(this.#injectedSheets);
+    root.adoptedStyleSheets = [...root.adoptedStyleSheets.filter((s) => !previous.has(s)), ...sheets];
+    this.#injectedSheets = sheets;
+    this.#styles = value ?? null;
+  }
+
   get canUndo(): boolean {
     return this.#history.canUndo;
   }
@@ -475,22 +540,61 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.#commit();
   }
 
-  /** `true` while there is no ink. */
+  /** `true` while there is no ink (no strokes and no base-layer image). */
   get empty(): boolean {
-    return this.#strokes.length === 0;
+    return this.#inkToExport === null;
   }
 
-  /** The signature as an SVG data URL, or `null` while the field is empty. */
-  get value(): string | null {
-    const { size } = this.#history.present;
-    if (this.#strokes.length === 0 || !size) return null;
-    return toSvgDataUrl(this.#strokes, size, this.#renderOptions);
+  /** The signature in `valueFormat` (an SVG or PNG data URL, or signature data), or `null` while the field is empty. */
+  get value(): string | SignatureData | null {
+    const ink = this.#inkToExport;
+    if (!ink) return null;
+    switch (this.valueFormat) {
+      case 'json':
+        return toData(ink);
+      case 'png':
+        return toPngDataUrl(ink, this.#exportOptions);
+      default:
+        return toSvgDataUrl(ink, this.#exportOptions);
+    }
+  }
+
+  /** The signature as an SVG data URL, whatever `valueFormat` is. An empty field gives an image of the background only. */
+  toSVG(): string {
+    return toSvgDataUrl(this.#inkOrBlank, this.#exportOptions);
+  }
+
+  /** The signature as a PNG data URL, `scale` times the drawing-area size (default 1), whatever `valueFormat` is. */
+  async toPNG({ scale = 1 }: { scale?: number } = {}): Promise<string> {
+    const ink = this.#inkOrBlank;
+    await prepareImages(ink);
+    return toPngDataUrl(ink, this.#exportOptions, scale);
+  }
+
+  /** Lossless signature data, or `null` while the field is empty, whatever `valueFormat` is. */
+  toJSON(): SignatureData | null {
+    const ink = this.#inkToExport;
+    return ink && toData(ink);
+  }
+
+  /** The present ink, or `null` while there is none. */
+  get #inkToExport(): Ink | null {
+    const { size, base, strokes } = this.#history.present;
+    if (!size || (strokes.length === 0 && !base?.strokes.length && !base?.image)) return null;
+    return { size, base, strokes };
+  }
+
+  /** The present ink, or nothing at the drawing area's current size. */
+  get #inkOrBlank(): Ink {
+    if (this.#inkToExport) return this.#inkToExport;
+    const rect = this.#surface();
+    return { size: { width: rect.width || 300, height: rect.height || 150 }, base: null, strokes: [] };
   }
 
   /** Applies disabled / readonly: drops a stroke in progress, updates the buttons and the tab order. */
   #syncInteractivity(): void {
     if (this.#locked && this.#active) {
-      this.#active = null;
+      this.#setActive(null);
       this.#render();
     }
     this.#area.tabIndex = this.#formDisabled ? -1 : 0;
@@ -507,6 +611,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   set value(value: string | SignatureData | null) {
     if (this.#isCurrentValue(value)) return;
     const loaded = parseValue(value);
+    if (loaded) void prepareImages(loaded);
     const state: InkState = loaded ? { size: loaded.size, base: loaded.base, strokes: [] } : EMPTY;
     this.#initialState ??= state;
     this.#load(state);
@@ -514,9 +619,11 @@ export class DigitalSignatureFieldElement extends HTMLElement {
 
   #isCurrentValue(value: unknown): boolean {
     if (value === null || value === undefined || value === '') return this.empty;
-    if (typeof value === 'string') return value === this.value;
-    const { size } = this.#history.present;
-    return !this.empty && !!size && JSON.stringify(value) === JSON.stringify(toSignatureData(this.#strokes, size));
+    const current = this.#inkToExport;
+    if (!current) return false;
+    if (typeof value === 'string') return value === this.value || value === toSvgDataUrl(current, this.#exportOptions);
+    const loaded = parseValue(value);
+    return !!loaded && JSON.stringify(toData({ ...loaded, strokes: [] })) === JSON.stringify(toData(current));
   }
 
   /** Rebuilds the built-in buttons from `actions`, `labels` and `penColors`. */
@@ -598,11 +705,19 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   }
 
   /**
+   * The box the ink is painted in: the ink SVG fills the area inside its border, and its viewBox is fitted
+   * into exactly this box. Sizes and pointer positions are measured here, not on the area's border box.
+   */
+  #surface(): DOMRect {
+    return this.#ink.getBoundingClientRect();
+  }
+
+  /**
    * The pointer position in stroke coordinates. Strokes keep the size the area had when the first one
    * was drawn; the ink is scaled to fit the current area and centred (ADR-0004), so map back through that.
    */
   #point(e: PointerEvent): Point {
-    const rect = this.#area.getBoundingClientRect();
+    const rect = this.#surface();
     const size = this.#size ?? rect;
     const scale = Math.min(rect.width / size.width, rect.height / size.height) || 1;
     const offsetX = (rect.width - size.width * scale) / 2;
@@ -623,14 +738,15 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     } catch {
       // Synthetic or already-released pointers cannot be captured; drawing still works.
     }
-    const rect = this.#area.getBoundingClientRect();
+    const rect = this.#surface();
     const size = (!this.empty && this.#history.present.size) || { width: rect.width, height: rect.height };
-    this.#active = {
+    const active: ActiveStroke = {
       pointerId: e.pointerId,
       stroke: { color: this.penColor, width: this.penWidth, points: [] },
       size,
     };
-    this.#active.stroke.points.push(this.#point(e));
+    this.#setActive(active);
+    active.stroke.points.push(this.#point(e));
     this.#render();
   };
 
@@ -643,7 +759,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   readonly #onPointerUp = (e: PointerEvent): void => {
     if (!this.#active || e.pointerId !== this.#active.pointerId) return;
     const { stroke, size } = this.#active;
-    this.#active = null;
+    this.#setActive(null);
     if (strokeLength(stroke) < this.minStrokeLength) {
       this.#render();
       return;
@@ -655,9 +771,15 @@ export class DigitalSignatureFieldElement extends HTMLElement {
 
   readonly #onPointerCancel = (e: PointerEvent): void => {
     if (!this.#active || e.pointerId !== this.#active.pointerId) return;
-    this.#active = null;
+    this.#setActive(null);
     this.#render();
   };
+
+  /** Starts or ends the stroke in progress; `:state(drawing)` matches while there is one. */
+  #setActive(active: ActiveStroke | null): void {
+    this.#active = active;
+    this.#formField.drawing = active !== null;
+  }
 
   /** All ink: the base layer's strokes, then the strokes drawn on top. */
   get #strokes(): readonly Stroke[] {
@@ -675,7 +797,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
    * The single load path: form reset uses it, and so does writing `value`.
    */
   #load(state: InkState): void {
-    this.#active = null;
+    this.#setActive(null);
     this.#history.reset(state);
     this.#render();
     this.#syncForm();
@@ -693,9 +815,13 @@ export class DigitalSignatureFieldElement extends HTMLElement {
 
   /** Reports the current value and validity to the form. */
   #syncForm(): void {
+    const value = this.value;
+    const strokeCount = this.#strokes.length;
     this.#formField.sync({
-      value: this.value,
-      strokeCount: this.#strokes.length,
+      // Forms submit text: signature data (`value-format="json"`) is submitted as its JSON.
+      value: value === null || typeof value === 'string' ? value : JSON.stringify(value),
+      // A loaded image cannot be counted stroke by stroke; it counts as a complete signature.
+      strokeCount: this.#history.present.base?.image ? Math.max(1, this.minStrokes, strokeCount) : strokeCount,
       required: this.required,
       minStrokes: this.minStrokes,
     });
@@ -716,6 +842,8 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     const strokes = this.#active ? [...this.#strokes, this.#active.stroke] : this.#strokes;
     const size = this.#size;
     if (size) this.#ink.setAttribute('viewBox', `0 0 ${size.width} ${size.height}`);
-    this.#ink.innerHTML = toSvgMarkup(strokes, this.#renderOptions);
+    const image = size ? baseImageMarkup({ size, base: this.#history.present.base }) : '';
+    // Built from parsed data only (escaped attributes, a rebuilt image data URL): a loaded value is never injected as markup.
+    this.#ink.innerHTML = image + toSvgMarkup(strokes, this.#renderOptions);
   }
 }

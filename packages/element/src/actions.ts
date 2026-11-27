@@ -122,15 +122,16 @@ export const ACTIONS_CSS = `
     min-width: var(--dsf-button-size, 32px);
     height: var(--dsf-button-size, 32px);
     padding: 0 4px;
-    border: 0;
+    /* Defaults meet WCAG AA on a white page: text #1f2937 is 14.7:1, the #6b7280 boundary 4.8:1. */
+    border: 1px solid #6b7280;
     border-radius: var(--dsf-radius, 4px);
-    background: var(--dsf-button-bg, transparent);
-    color: var(--dsf-button-color, currentColor);
+    background: var(--dsf-button-bg, #fff);
+    color: var(--dsf-button-color, #1f2937);
     font: inherit;
     cursor: pointer;
   }
   .action:hover:not(:disabled) {
-    background: var(--dsf-button-hover-bg, rgb(0 0 0 / 0.06));
+    background: var(--dsf-button-hover-bg, #f3f4f6);
   }
   .action:focus-visible {
     outline: var(--dsf-focus-ring, 2px solid #1a3fbf);
@@ -141,7 +142,7 @@ export const ACTIONS_CSS = `
     cursor: default;
   }
   .action[aria-pressed='true'] {
-    box-shadow: inset 0 0 0 2px var(--dsf-button-color, currentColor);
+    box-shadow: inset 0 0 0 2px var(--dsf-button-color, #1f2937);
   }
   .swatch {
     display: block;

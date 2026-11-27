@@ -39,7 +39,8 @@ export function validityOf(state: FieldState): { flags: ValidityStateFlags; mess
  * Owns the host's `ElementInternals`. Custom states:
  * - `empty` while there is no ink;
  * - `invalid` while the field is invalid *and* the user has interacted with it (drawn, undone,
- *   cleared, or moved focus out) or a submit was attempted, like `:user-invalid`. A form reset hides it again.
+ *   cleared, or moved focus out) or a submit was attempted, like `:user-invalid`. A form reset hides it again;
+ * - `drawing` while a stroke is in progress (set by the element through `drawing`).
  */
 export class FormField {
   readonly #internals: ElementInternals;
@@ -66,6 +67,11 @@ export class FormField {
   resetInteraction(): void {
     this.#interacted = false;
     this.#syncInvalidState();
+  }
+
+  /** Whether a stroke is in progress: `:state(drawing)`. */
+  set drawing(on: boolean) {
+    this.#toggleState('drawing', on);
   }
 
   #syncInvalidState(): void {

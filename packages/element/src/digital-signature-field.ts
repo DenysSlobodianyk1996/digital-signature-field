@@ -1,4 +1,17 @@
-import { ACTIONS_CSS, createActionButton, DEFAULT_ACTION_LABELS, DEFAULT_ACTIONS, type HistoryAction } from './actions';
+import {
+  ACTIONS_CSS,
+  ACTIONS_POSITIONS,
+  createActionButton,
+  createColorGroup,
+  createWidthGroup,
+  DEFAULT_ACTIONS,
+  DEFAULT_LABELS,
+  DEFAULT_PEN_COLORS,
+  parseActions,
+  type ActionsPosition,
+  type HistoryAction,
+  type Labels,
+} from './actions';
 import { History } from './history';
 import { strokeLength, toSvgDataUrl, type Point, type Size, type Stroke } from './ink';
 import { toSvgMarkup, type RenderOptions } from './render';
@@ -10,6 +23,24 @@ const template = `
 <style>
   :host {
     display: block;
+  }
+  .root {
+    display: flex;
+    flex-direction: column;
+    gap: var(--dsf-gap, 4px);
+  }
+  .root[data-position='top'] .actions,
+  .root[data-position='start'] .actions {
+    order: -1;
+  }
+  .root[data-position='start'],
+  .root[data-position='end'] {
+    flex-direction: row;
+  }
+  .root[data-position='start'] .area,
+  .root[data-position='end'] .area {
+    flex: 1;
+    min-width: 0;
   }
   .area {
     position: relative;
@@ -31,13 +62,44 @@ const template = `
     display: block;
     pointer-events: none;
   }
+  .placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+    pointer-events: none;
+  }
+  .placeholder[hidden] {
+    display: none;
+  }
+  .status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
   ${ACTIONS_CSS}
 </style>
-<div part="root" class="root">
-  <div part="area" class="area" tabindex="0" role="img" aria-label="Signature drawing area">
+<div part="root" class="root" data-position="bottom">
+  <div part="area" class="area" tabindex="0" role="img">
     <svg part="ink" class="ink" xmlns="${SVG_NS}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"></svg>
+    <div class="placeholder"><slot name="placeholder"></slot></div>
   </div>
-  <div part="actions" class="actions"></div>
+  <div part="actions" class="actions">
+    <slot name="actions">
+      <slot name="actions-start"></slot>
+      <div class="builtins"></div>
+      <slot name="actions-end"></slot>
+    </slot>
+  </div>
+  <div part="status" class="status" role="status" aria-live="polite"></div>
 </div>
 `;
 
@@ -74,11 +136,29 @@ const DEFAULT_SMOOTHING = 0.5;
 const DEFAULT_HISTORY_LIMIT = 50;
 
 export class DigitalSignatureFieldElement extends HTMLElement {
-  static readonly observedAttributes = ['smoothing', 'pressure', 'history-limit'];
+  static readonly observedAttributes = [
+    'smoothing',
+    'pressure',
+    'history-limit',
+    'actions',
+    'actions-position',
+    'pen-color',
+    'pen-width',
+    'disabled',
+    'readonly',
+  ];
 
+  readonly #root: HTMLDivElement;
   readonly #area: HTMLDivElement;
   readonly #ink: SVGSVGElement;
+  readonly #placeholder: HTMLDivElement;
   readonly #actions: HTMLDivElement;
+  /** The built-in buttons: fallback content of the `actions` slot, between `actions-start` and `actions-end`. */
+  readonly #builtins: HTMLDivElement;
+  readonly #status: HTMLDivElement;
+
+  #labels: Labels = DEFAULT_LABELS;
+  #penColors: readonly string[] = DEFAULT_PEN_COLORS;
 
   /** Kept strokes (in drawing-area coordinates) and their undo/redo history. The SVG is always redrawn from this. */
   readonly #history = new History<InkState>(EMPTY, DEFAULT_HISTORY_LIMIT);
@@ -90,22 +170,38 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     super();
     const root = this.attachShadow({ mode: 'open' });
     root.innerHTML = template;
+    this.#root = root.querySelector('.root') as HTMLDivElement;
     this.#area = root.querySelector('.area') as HTMLDivElement;
     this.#ink = root.querySelector('.ink') as SVGSVGElement;
+    this.#placeholder = root.querySelector('.placeholder') as HTMLDivElement;
     this.#actions = root.querySelector('.actions') as HTMLDivElement;
-    for (const action of DEFAULT_ACTIONS) {
-      this.#actions.append(createActionButton(action, DEFAULT_ACTION_LABELS[action]));
-    }
-    this.#actions.addEventListener('click', this.#onActionClick);
-    this.#updateActionButtons();
+    this.#builtins = root.querySelector('.builtins') as HTMLDivElement;
+    this.#status = root.querySelector('.status') as HTMLDivElement;
+    this.#builtins.addEventListener('click', this.#onActionClick);
+    this.#renderActions();
+    this.#updateEmptyState();
   }
 
   attributeChangedCallback(name: string): void {
-    if (name === 'history-limit') {
-      this.#history.limit = this.historyLimit;
-      this.#syncHistoryState();
-    } else {
-      this.#render();
+    switch (name) {
+      case 'history-limit':
+        this.#history.limit = this.historyLimit;
+        this.#syncHistoryState();
+        break;
+      case 'actions':
+        this.#renderActions();
+        break;
+      case 'actions-position':
+        this.#root.dataset['position'] = this.actionsPosition;
+        break;
+      case 'pen-color':
+      case 'pen-width':
+      case 'disabled':
+      case 'readonly':
+        this.#updateActionButtons();
+        break;
+      default:
+        this.#render();
     }
   }
 
@@ -194,6 +290,46 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.setAttribute('history-limit', String(value));
   }
 
+  /** Space-separated built-in actions: `undo`, `redo`, `clear`, `color`, `width`, or `none` (headless mode). */
+  get actions(): string {
+    return this.getAttribute('actions') ?? DEFAULT_ACTIONS;
+  }
+
+  set actions(value: string) {
+    this.setAttribute('actions', value);
+  }
+
+  /** Where the actions bar sits. `start` and `end` are logical sides that follow `dir`. */
+  get actionsPosition(): ActionsPosition {
+    const value = this.getAttribute('actions-position')?.trim().toLowerCase();
+    return ACTIONS_POSITIONS.find((p) => p === value) ?? 'bottom';
+  }
+
+  set actionsPosition(value: ActionsPosition) {
+    this.setAttribute('actions-position', value);
+  }
+
+  /** Texts of the built-in buttons, the drawing area's name and the status messages. Unset keys stay English. */
+  get labels(): Labels {
+    return { ...this.#labels };
+  }
+
+  set labels(value: Partial<Labels> | null | undefined) {
+    this.#labels = { ...DEFAULT_LABELS, ...value };
+    this.#renderActions();
+    this.#updateEmptyState();
+  }
+
+  /** Swatches offered by the `color` action. */
+  get penColors(): string[] {
+    return [...this.#penColors];
+  }
+
+  set penColors(value: readonly string[] | null | undefined) {
+    this.#penColors = value?.length ? [...value] : DEFAULT_PEN_COLORS;
+    this.#renderActions();
+  }
+
   get canUndo(): boolean {
     return this.#history.canUndo;
   }
@@ -252,22 +388,64 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     return !this.empty && !!size && JSON.stringify(value) === JSON.stringify(toSignatureData(this.#strokes, size));
   }
 
-  /** Disables each built-in button while its action would do nothing. */
+  /** Rebuilds the built-in buttons from `actions`, `labels` and `penColors`. */
+  #renderActions(): void {
+    const actions = parseActions(this.actions);
+    this.#actions.hidden = actions === null;
+    this.#builtins.replaceChildren(
+      ...(actions ?? []).map((action) =>
+        action === 'color'
+          ? createColorGroup(this.#penColors, this.#labels)
+          : action === 'width'
+            ? createWidthGroup(this.#labels)
+            : createActionButton(action, this.#labels[action]),
+      ),
+    );
+    this.#updateActionButtons();
+  }
+
+  /**
+   * Disables every built-in button while the field is disabled or readonly, and each history button while
+   * its action would do nothing. Marks the swatch and width matching the current pen as pressed.
+   */
   #updateActionButtons(): void {
+    const locked = this.hasAttribute('disabled') || this.hasAttribute('readonly');
     const available: Record<HistoryAction, boolean> = {
       undo: this.canUndo,
       redo: this.canRedo,
       clear: !this.empty,
     };
-    for (const button of this.#actions.querySelectorAll<HTMLButtonElement>('button[data-action]')) {
-      button.disabled = !available[button.dataset['action'] as HistoryAction];
+    const penColor = this.penColor.toLowerCase();
+    for (const button of this.#builtins.querySelectorAll<HTMLButtonElement>('button[data-action]')) {
+      const action = button.dataset['action'];
+      const value = button.dataset['value'] ?? '';
+      if (action === 'color') {
+        button.setAttribute('aria-pressed', String(value.trim().toLowerCase() === penColor));
+        button.disabled = locked;
+      } else if (action === 'width') {
+        button.setAttribute('aria-pressed', String(Number(value) === this.penWidth));
+        button.disabled = locked;
+      } else {
+        button.disabled = locked || !available[action as HistoryAction];
+      }
     }
+  }
+
+  /** Names the drawing area, shows the placeholder while empty, and sets the text the live region announces. */
+  #updateEmptyState(): void {
+    this.#area.setAttribute('aria-label', this.#labels.drawingArea);
+    this.#placeholder.hidden = !this.empty;
+    this.#status.textContent = this.empty ? this.#labels.emptyStatus : this.#labels.signedStatus;
   }
 
   readonly #onActionClick = (e: MouseEvent): void => {
     const button = (e.target as Element).closest<HTMLButtonElement>('button[data-action]');
     if (!button || button.disabled) return;
-    this.#run(button.dataset['action'] as HistoryAction);
+    const action = button.dataset['action'];
+    const value = button.dataset['value'] ?? '';
+    if (action === 'color') this.penColor = value;
+    else if (action === 'width') this.penWidth = Number(value);
+    else this.#run(action as HistoryAction);
   };
 
   /** Ctrl/Cmd+Z undoes; Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y redo. Keydowns reach the host only while focus is inside the field. */
@@ -374,6 +552,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     if (next.canUndo === prev.canUndo && next.canRedo === prev.canRedo && next.empty === prev.empty) return;
     this.#historyState = next;
     this.#updateActionButtons();
+    this.#updateEmptyState();
     this.dispatchEvent(new CustomEvent('dsf-history-change', { bubbles: true, detail: { ...next } }));
   }
 

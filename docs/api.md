@@ -92,7 +92,7 @@ A PNG data URL, or an SVG the field did not export, loads as a base-layer **imag
 | `DsfSignature` | standalone component `<dsf-signature>` | Wraps the element. Has the `FormValueControl` shape (ADR-0003). |
 | `DsfSignatureCva` | standalone directive `[dsfCva]` | CVA mode, for Angular 17–21 forms. |
 
-`<dsf-signature>` passes through every element property as an `input()` with the same camelCase name (`name`, `valueFormat`, `background`, `penColor`, `penWidth`, `pressure`, `smoothing`, `minStrokes`, `minStrokeLength`, `historyLimit`, `actions`, `actionsPosition`, `labels`, `penColors`, `styles`). Unbound inputs keep the element's defaults. Its form contract:
+`<dsf-signature>` passes through every element property as an `input()` with the same camelCase name (`name`, `valueFormat`, `background`, `penColor`, `penWidth`, `pressure`, `smoothing`, `minStrokes`, `minStrokeLength`, `historyLimit`, `actions`, `actionsPosition`, `labels`, `penColors`, `styles`). Unbound inputs keep the element's defaults, and an input set back to `undefined` restores the default. Each input is applied on its own, so changing one never re-applies the others (a pen colour the signer picked from the swatches stays until `penColor` itself changes). Its form contract:
 
 ```ts
 value    = model<string | SignatureData | null>(null);

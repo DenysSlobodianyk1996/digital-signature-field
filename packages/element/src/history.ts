@@ -42,6 +42,13 @@ export class History<S> {
     this.#trim();
   }
 
+  /** Starts a fresh history whose floor is `initial` (e.g. a loaded base layer): nothing to undo or redo. */
+  reset(initial: S): void {
+    this.#past = [];
+    this.#present = initial;
+    this.#future = [];
+  }
+
   /** Records a new entry. Empties the redo stack. */
   push(next: S): void {
     this.#past.push(this.#present);

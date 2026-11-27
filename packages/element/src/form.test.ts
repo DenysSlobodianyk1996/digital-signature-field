@@ -202,9 +202,44 @@ describe('form reset', () => {
     expect(new FormData(form).get('signature')).toBe(el.value);
   });
 
-  // Needs the `value` setter from #9 (loading a base layer): set an initial value, draw, reset,
-  // expect the loaded value back as the base layer, with no `change` and nothing to undo.
-  it.todo('restores the value the field was first loaded with, as a base layer');
+  function savedSignature(): string {
+    const source = document.createElement('digital-signature-field');
+    source.style.width = '400px';
+    document.body.append(source);
+    draw(source, [[10, 10], [80, 40]]);
+    draw(source, [[10, 60], [80, 90]]);
+    const value = source.value!;
+    source.remove();
+    return value;
+  }
+
+  it('restores the value the field was first loaded with, as a base layer, without firing change', () => {
+    const initial = savedSignature();
+    const { form, el } = mountInForm({ name: 'signature' });
+    el.value = initial;
+    el.clear();
+    draw(el, [[100, 10], [180, 40]]);
+    const seen = changes(el);
+    form.reset();
+    expect(seen).toHaveLength(0);
+    expect(el.value).toBe(initial);
+    expect(inkStrokes(el)).toHaveLength(2);
+    expect(new FormData(form).get('signature')).toBe(initial);
+    expect(el.canUndo).toBe(false);
+    // A base layer: clear removes it, undo brings it back.
+    el.clear();
+    el.undo();
+    expect(el.value).toBe(initial);
+  });
+
+  it('restores the first loaded value even after later values were written', () => {
+    const initial = savedSignature();
+    const { form, el } = mountInForm();
+    el.value = initial;
+    el.value = null;
+    form.reset();
+    expect(el.value).toBe(initial);
+  });
 });
 
 function actionButtons(el: DigitalSignatureFieldElement): HTMLButtonElement[] {

@@ -4,7 +4,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/.nx/**', '**/.angular/**', '**/out-tsc/**', '**/test-results/**'],
+    ignores: ['**/dist/**', '**/node_modules/**', '**/.nx/**', '**/.angular/**', '**/out-tsc/**', '**/test-results/**', '**/playwright-report/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -12,8 +12,8 @@ export default tseslint.config(
     languageOptions: { globals: { ...globals.browser } },
   },
   {
-    // Node-side tool config in the Angular apps (Karma, Playwright, Vitest).
-    files: ['**/*.cjs', '**/playwright.config.ts', '**/vitest-base.config.ts'],
+    // Node-side tool config and scripts (Karma, Playwright, Vitest, the Pages site build).
+    files: ['**/*.cjs', '**/*.mjs', '**/playwright.config.ts', '**/vitest-base.config.ts'],
     languageOptions: { globals: { ...globals.node } },
   },
   {

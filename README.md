@@ -15,10 +15,12 @@ A hand-drawn signature as a real form field: a framework-free web component (`<d
 
 | Framework | Demo | Source |
 | --- | --- | --- |
-| Angular (latest) — signal + reactive forms | `https://denysslobodianyk1996.github.io/digital-signature-field/angular/` *(planned)* | `apps/demo-angular` |
-| Angular 17 — CVA mode | `https://denysslobodianyk1996.github.io/digital-signature-field/angular-17/` *(planned)* | `apps/demo-angular-17` |
-| React 19 | `https://denysslobodianyk1996.github.io/digital-signature-field/react/` *(planned)* | `apps/demo-react` |
-| Vue 3 | `https://denysslobodianyk1996.github.io/digital-signature-field/vue/` *(planned)* | `apps/demo-vue` |
+| Angular (latest) — signal + reactive forms | [https://denysslobodianyk1996.github.io/digital-signature-field/angular/](https://denysslobodianyk1996.github.io/digital-signature-field/angular/) | [`apps/demo-angular`](apps/demo-angular) |
+| Angular 17 — CVA mode | [https://denysslobodianyk1996.github.io/digital-signature-field/angular-17/](https://denysslobodianyk1996.github.io/digital-signature-field/angular-17/) | [`apps/demo-angular-17`](apps/demo-angular-17) |
+| React 19 | [https://denysslobodianyk1996.github.io/digital-signature-field/react/](https://denysslobodianyk1996.github.io/digital-signature-field/react/) | [`apps/demo-react`](apps/demo-react) |
+| Vue 3 | [https://denysslobodianyk1996.github.io/digital-signature-field/vue/](https://denysslobodianyk1996.github.io/digital-signature-field/vue/) | [`apps/demo-vue`](apps/demo-vue) |
+
+All four are deployed as one GitHub Pages site ([index](https://denysslobodianyk1996.github.io/digital-signature-field/)) on every push to `main` (`.github/workflows/pages.yml`, ADR-0010).
 
 ## Packages
 
@@ -278,12 +280,14 @@ Nx + pnpm monorepo:
 ```
 packages/element      packages/angular
 apps/demo-angular     apps/demo-angular-17     apps/demo-react     apps/demo-vue
+apps/site              # GitHub Pages site: assembles the four demos under their sub-paths
 ```
 
 ```bash
 pnpm install
 pnpm nx serve demo-angular        # or demo-react / demo-vue / demo-angular-17
 pnpm nx run-many -t test e2e
+pnpm nx e2e-pages site            # build the Pages site into apps/site/dist and check it
 pnpm nx release                   # CI only
 ```
 

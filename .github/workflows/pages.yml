@@ -1,0 +1,58 @@
+name: Deploy demos to GitHub Pages
+
+# ADR-0010: the four demo apps, each built under its own sub-path, deployed as one Pages site:
+# https://denysslobodianyk1996.github.io/digital-signature-field/{angular,angular-17,react,vue}/
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; never cancel one that is already running.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      NX_NO_CLOUD: true
+      DSF_SITE_BASE: /digital-signature-field/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      # Builds every demo with its base path into apps/site/dist, then checks the assembled site
+      # (sub-path assets, deep links, 404 fallback) before it is published.
+      - name: Build and check the Pages site
+        run: pnpm nx e2e-pages site --outputStyle=static
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

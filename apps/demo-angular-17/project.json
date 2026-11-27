@@ -8,9 +8,10 @@
     "build": {
       "executor": "nx:run-commands",
       "outputs": ["{projectRoot}/dist"],
+      "inputs": ["production", "^production", { "env": "DSF_DEMO_BASE" }],
       "options": {
         "cwd": "{projectRoot}",
-        "command": "ng build"
+        "command": "ng build --base-href \"${DSF_DEMO_BASE:-/}\""
       }
     },
     "typecheck": {

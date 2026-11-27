@@ -24,7 +24,7 @@
 | `history-limit` | `historyLimit` | `number` | `50` | Maximum number of undoable entries. |
 | `actions` | `actions` | space-separated tokens | `'undo clear'` | Tokens: `undo`, `redo`, `clear`, `color`, `width`, or `none`. |
 | `actions-position` | `actionsPosition` | `'bottom' \| 'top' \| 'start' \| 'end'` | `'bottom'` | `start` and `end` follow `dir`. |
-| — | `labels` | `Partial<Labels>` | English | `{ undo, redo, clear, color, width, drawingArea, emptyStatus, … }` |
+| — | `labels` | `Partial<Labels>` | English | `{ undo, redo, clear, color, width, thin, medium, thick, drawingArea, emptyStatus, signedStatus }`. `color` and `width` name the swatch and width groups; `thin`/`medium`/`thick` name the three widths; the status texts are announced by the live region (`status` part). Unset keys stay English. |
 | — | `penColors` | `string[]` | `['#000', '#1a3fbf']` | Swatches shown by the `color` action. |
 | — | `styles` | `string \| CSSStyleSheet \| Array<string \| CSSStyleSheet>` | — | Extra sheets added through `adoptedStyleSheets` (ADR-0007). |
 

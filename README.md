@@ -108,7 +108,7 @@ npm i @digital-signature-field/element
 ```tsx
 import '@digital-signature-field/element';
 import type { DigitalSignatureFieldElement } from '@digital-signature-field/element';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 
 export function SignatureInput({ onChange }: { onChange: (v: string | null) => void }) {
   const ref = useRef<DigitalSignatureFieldElement>(null);
@@ -120,13 +120,49 @@ export function SignatureInput({ onChange }: { onChange: (v: string | null) => v
     return () => el.removeEventListener('change', handle);
   }, [onChange]);
 
-  return <digital-signature-field ref={ref} name="signature" required actions="undo clear" />;
+  return (
+    <digital-signature-field
+      ref={ref}
+      name="signature"
+      required
+      actions="undo redo clear"
+      labels={{ clear: 'Start over' }}
+    />
+  );
 }
 ```
 
-- React 19 passes unknown props to custom elements as **properties**, so `labels={{…}}` and `penColors={[…]}` work directly.
-- JSX types: add `"types": ["@digital-signature-field/element/jsx-react"]` to `tsconfig.json`.
-- Inside a plain `<form>` you can skip the listener entirely and read the value from `FormData` on submit.
+Inside a plain `<form>`, the value is in `FormData` on submit, and `required` blocks submitting while the field is empty:
+
+```tsx
+import { useState, type FormEvent } from 'react';
+import { SignatureInput } from './SignatureInput';
+
+export function App() {
+  const [signature, setSignature] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState<FormDataEntryValue | null>(null);
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault(); // `required` has already blocked submits while the field was empty
+    setSubmitted(new FormData(e.currentTarget).get('signature'));
+  }
+
+  return (
+    <form onSubmit={onSubmit}>
+      <SignatureInput onChange={setSignature} />
+      {signature && <img src={signature} alt="Your signature" />}
+      <button>Submit</button>
+      {submitted && <output>{String(submitted)}</output>}
+    </form>
+  );
+}
+```
+
+- Bind with a `ref` and listen to `change` with `addEventListener`. React's `onChange` prop is for its own synthetic events, not the element's `change`.
+- React 19 passes props to custom elements as **properties** when the element has one, so objects and arrays work directly: `labels={{…}}`, `penColors={[…]}`.
+- JSX types: add `"types": ["@digital-signature-field/element/jsx-react"]` to `tsconfig.json` (needs `@types/react` 19).
+
+Full demo: [`apps/demo-react`](apps/demo-react).
 
 ### Vue 3
 
@@ -136,7 +172,7 @@ npm i @digital-signature-field/element
 
 ```ts
 // vite.config.ts — tell Vue the tag is a custom element
-vue({ template: { compilerOptions: { isCustomElement: (tag) => tag === 'digital-signature-field' } } })
+vue({ template: { compilerOptions: { isCustomElement: (tag) => tag === 'digital-signature-field' } } }),
 ```
 
 ```vue
@@ -145,21 +181,60 @@ import '@digital-signature-field/element';
 import { ref } from 'vue';
 
 const signature = ref<string | null>(null);
+const submitted = ref<FormDataEntryValue | null>(null);
+
+function onSubmit(event: SubmitEvent) {
+  submitted.value = new FormData(event.target as HTMLFormElement).get('signature');
+}
 </script>
 
 <template>
-  <digital-signature-field
-    :value="signature"
-    @change="signature = $event.detail.value"
-    name="signature"
-    required
-  />
-  <img v-if="signature" :src="signature" alt="Your signature" />
+  <form @submit.prevent="onSubmit">
+    <digital-signature-field
+      :value="signature"
+      @change="signature = $event.detail.value"
+      name="signature"
+      required
+      actions="undo redo clear"
+      :labels.prop="{ clear: 'Start over' }"
+    />
+    <img v-if="signature" :src="signature" alt="Your signature" />
+    <button>Submit</button>
+    <output v-if="submitted">{{ submitted }}</output>
+  </form>
 </template>
 ```
 
 - `:value` + `@change` is the `v-model` equivalent. Writing back the value the field just emitted does nothing, so undo history is kept.
-- Use `.prop` for objects and arrays: `:labels.prop="{ clear: 'Erase' }"`.
+- Use `.prop` for objects and arrays: `:labels.prop="{ clear: 'Start over' }"`.
+- Types for templates: declare the tag in `GlobalComponents` (in any `.d.ts` file your `tsconfig.json` includes). `$event` in `@change` is then typed.
+
+```ts
+// Declares <digital-signature-field> for Vue templates, so props and `$event` are type-checked.
+import type { HistoryState, Labels, SignatureData } from '@digital-signature-field/element';
+import type { HTMLAttributes } from 'vue';
+
+interface DigitalSignatureFieldProps extends HTMLAttributes {
+  value?: string | SignatureData | null;
+  name?: string;
+  required?: boolean;
+  disabled?: boolean;
+  readonly?: boolean;
+  actions?: string;
+  labels?: Partial<Labels>;
+  penColors?: readonly string[];
+  onChange?: (event: CustomEvent<{ value: string | null }>) => void;
+  'onDsf-history-change'?: (event: CustomEvent<HistoryState>) => void;
+}
+
+declare module 'vue' {
+  interface GlobalComponents {
+    'digital-signature-field': new () => { $props: DigitalSignatureFieldProps };
+  }
+}
+```
+
+Full demo: [`apps/demo-vue`](apps/demo-vue).
 
 ## Customise
 

@@ -353,6 +353,33 @@ describe('in a form', () => {
     expect(JSON.parse(new FormData(form).get('signature') as string)).toEqual(SIGNATURE);
   });
 
+  it('the submitted JSON text loads back into a field', () => {
+    const { form, el } = inForm({ 'value-format': 'json' });
+    draw(el, [[10, 10], [60, 30]]);
+    const submitted = new FormData(form).get('signature') as string;
+    const other = mount();
+    other.value = submitted;
+    expect(other.toJSON()).toEqual(el.toJSON());
+    expect(other.canUndo).toBe(false);
+  });
+
+  it('writing back the JSON text of the current value keeps the history', () => {
+    const { form, el } = inForm({ 'value-format': 'json' });
+    draw(el, [[10, 10], [60, 30]]);
+    el.value = new FormData(form).get('signature') as string;
+    expect(el.canUndo).toBe(true);
+  });
+
+  it('text that is not signature data JSON empties the field', () => {
+    const el = mount();
+    el.value = structuredClone(SIGNATURE);
+    el.value = JSON.stringify({ ...SIGNATURE, version: 2 });
+    expect(el.empty).toBe(true);
+    el.value = structuredClone(SIGNATURE);
+    el.value = '{not json';
+    expect(el.empty).toBe(true);
+  });
+
   it('png values are submitted as the PNG data URL', () => {
     const { form, el } = inForm({ 'value-format': 'png' });
     draw(el, [[10, 10], [60, 10]]);

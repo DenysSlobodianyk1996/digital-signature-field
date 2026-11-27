@@ -28,7 +28,7 @@ import {
   type Ink,
   type ValueFormat,
 } from './serialize';
-import { parseValue, type BaseLayer, type SignatureData } from './value';
+import { isJsonText, parseValue, type BaseLayer, type SignatureData } from './value';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -658,7 +658,9 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     if (value === null || value === undefined || value === '') return this.empty;
     const current = this.#inkToExport;
     if (!current) return false;
-    if (typeof value === 'string') return value === this.value || value === toSvgDataUrl(current, this.#exportOptions);
+    if (typeof value === 'string' && !isJsonText(value)) {
+      return value === this.value || value === toSvgDataUrl(current, this.#exportOptions);
+    }
     const loaded = parseValue(value);
     return !!loaded && JSON.stringify(toData({ ...loaded, strokes: [] })) === JSON.stringify(toData(current));
   }

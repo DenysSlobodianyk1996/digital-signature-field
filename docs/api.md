@@ -12,7 +12,7 @@
 | `required` | `required` | `boolean` | `false` | Invalid (`valueMissing`) while the field is empty. |
 | `disabled` | `disabled` | `boolean` | `false` | Blocks drawing and all actions. Excluded from form submission. |
 | `readonly` | `readOnly` | `boolean` | `false` | Shows the ink and blocks drawing and actions. Still submitted. |
-| — | `value` | `string \| SignatureData \| null` | `null` | Setting it loads a base layer and **does not** emit `change`. Setting the value the field already has does nothing, so the history is kept. |
+| — | `value` | `string \| SignatureData \| null` | `null` | Setting it loads a base layer and **does not** emit `change`. Accepts an SVG or PNG data URL, `SignatureData`, or its JSON text (what a `json` field submits to its form). Setting the value the field already has does nothing, so the history is kept. |
 | `value-format` | `valueFormat` | `'svg' \| 'png' \| 'json'` | `'svg'` | Format of `value` and of the `change` detail. |
 | `background` | `background` | CSS colour \| `'transparent'` | `'#fff'` | Painted into exported `svg` and `png` values. |
 | `pen-color` | `penColor` | CSS colour | `'#000'` | Applies to new strokes. |

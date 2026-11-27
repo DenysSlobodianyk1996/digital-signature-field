@@ -275,6 +275,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.#area.addEventListener('pointermove', this.#onPointerMove);
     this.#area.addEventListener('pointerup', this.#onPointerUp);
     this.#area.addEventListener('pointercancel', this.#onPointerCancel);
+    this.#area.addEventListener('lostpointercapture', this.#onPointerCancel);
     this.addEventListener('keydown', this.#onKeyDown);
   }
 
@@ -283,8 +284,9 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.#area.removeEventListener('pointermove', this.#onPointerMove);
     this.#area.removeEventListener('pointerup', this.#onPointerUp);
     this.#area.removeEventListener('pointercancel', this.#onPointerCancel);
+    this.#area.removeEventListener('lostpointercapture', this.#onPointerCancel);
     this.removeEventListener('keydown', this.#onKeyDown);
-    this.#setActive(null);
+    this.#dropActive();
   }
 
   /** Called by the browser for `disabled` on the field or on an ancestor `<fieldset>`. */
@@ -595,10 +597,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
 
   /** Applies disabled / readonly: drops a stroke in progress, updates the buttons and the tab order. */
   #syncInteractivity(): void {
-    if (this.#locked && this.#active) {
-      this.#setActive(null);
-      this.#render();
-    }
+    if (this.#locked) this.#dropActive();
     this.#area.tabIndex = this.#formDisabled ? -1 : 0;
     if (this.#formDisabled) this.#area.setAttribute('aria-disabled', 'true');
     else this.#area.removeAttribute('aria-disabled');
@@ -741,7 +740,13 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   }
 
   readonly #onPointerDown = (e: PointerEvent): void => {
-    if (this.#active || e.button !== 0 || this.#locked) return;
+    if (e.button !== 0 || this.#locked) return;
+    if (this.#active) {
+      // Another pointer while one is drawing (a second finger) is ignored. The same pointer going down
+      // again means the stroke in progress is stale: its pointerup went elsewhere and never came.
+      if (this.#active.pointerId !== e.pointerId) return;
+      this.#dropActive();
+    }
     e.preventDefault();
     try {
       this.#area.setPointerCapture(e.pointerId);
@@ -791,11 +796,22 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.dispatchEvent(new CustomEvent(type, { bubbles: true, detail: { strokeCount } }));
   }
 
+  /** `pointercancel` or `lostpointercapture`: the stroke in progress will get no pointerup, so it is dropped. */
   readonly #onPointerCancel = (e: PointerEvent): void => {
-    if (!this.#active || e.pointerId !== this.#active.pointerId) return;
+    if (this.#active?.pointerId === e.pointerId) this.#dropActive();
+  };
+
+  /**
+   * Drops the stroke in progress, if any: no ink, no `change`. A stroke that already fired `dsf-stroke-start`
+   * gets its `dsf-stroke-end`, with the stroke count it did not add to.
+   */
+  #dropActive(): void {
+    const active = this.#active;
+    if (!active) return;
     this.#setActive(null);
     this.#render();
-  };
+    if (active.started) this.#dispatchStroke('dsf-stroke-end', this.#strokes.length);
+  }
 
   /** Starts or ends the stroke in progress; `:state(drawing)` matches while there is one. */
   #setActive(active: ActiveStroke | null): void {
@@ -819,7 +835,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
    * The single load path: form reset uses it, and so does writing `value`.
    */
   #load(state: InkState): void {
-    this.#setActive(null);
+    this.#dropActive();
     this.#history.reset(state);
     this.#render();
     this.#syncForm();

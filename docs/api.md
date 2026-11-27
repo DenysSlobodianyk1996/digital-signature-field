@@ -50,7 +50,7 @@
 | --- | --- | --- |
 | `change` | `{ value }` | After each stroke ends, and after undo, redo and clear. Never fired when a value is loaded. |
 | `dsf-history-change` | `{ canUndo, canRedo, empty }` | Whenever any of the three changes. Use it to drive an external toolbar. |
-| `dsf-stroke-start` / `dsf-stroke-end` | `{ strokeCount }` | Only for strokes that are kept, never for taps: `dsf-stroke-start` once the stroke in progress is long enough to keep (`min-stroke-length`), `dsf-stroke-end` at pen up, after `change`. `strokeCount` includes the stroke. |
+| `dsf-stroke-start` / `dsf-stroke-end` | `{ strokeCount }` | Only for strokes that are kept, never for taps: `dsf-stroke-start` once the stroke in progress is long enough to keep (`min-stroke-length`), `dsf-stroke-end` at pen up, after `change`. `strokeCount` includes the stroke. Every `dsf-stroke-start` is paired with a `dsf-stroke-end`: when a started stroke is dropped instead of kept (`pointercancel`, lost pointer capture, the field locked, removed or loaded mid-stroke), `dsf-stroke-end` fires with no `change` and a `strokeCount` that does not include it. |
 | `blur` | — | Focus left the field. Wrappers map this to "touched". |
 
 ### Type exports
@@ -104,7 +104,7 @@ touch    = output<void>();  // focus left the field, or a stroke ended while unt
 
 Loading a value from the form (or `[(value)]`) never marks the control dirty; drawing does. `invalid` adds the `dsf-invalid` class to the host.
 
-The element's events are re-exposed as outputs: `historyChange` (`{ canUndo, canRedo, empty }`), `strokeStart` and `strokeEnd` (`DsfStrokeEvent`: `{ strokeCount }`). Value changes come through the `value` model (`[(value)]`).
+The element's events are re-exposed as outputs: `historyChange` (`{ canUndo, canRedo, empty }`), `strokeStart` and `strokeEnd` (`DsfStrokeEvent`: `{ strokeCount }`), paired like the element's events: a dropped stroke emits `strokeEnd` with the unchanged count. Value changes come through the `value` model (`[(value)]`).
 
 Imperative access is through `viewChild(DsfSignature)`: `.undo()`, `.redo()`, `.clear()`, `.toSVG()`, `.toPNG()`, `.toJSON()`, `.focus()`. They throw before the element is available (on the server, or before the first browser render).
 

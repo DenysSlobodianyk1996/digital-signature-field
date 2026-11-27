@@ -1,0 +1,80 @@
+# Releases @digital-signature-field/element and @digital-signature-field/angular together (ADR-0009).
+#
+# - Manual (workflow_dispatch on main): `nx release` bumps both packages to one version (conventional
+#   commits, or the `version` input), writes CHANGELOG.md, commits, tags `v<version>`, pushes and
+#   creates the GitHub release, then publishes both packages to npm.
+# - Tag (`v*` pushed, e.g. after a local `pnpm nx release --skip-publish`): publishes the tagged
+#   versions only. Tags pushed by this workflow itself don't re-trigger it (GITHUB_TOKEN pushes never do).
+#
+# npm auth is trusted publishing (OIDC, #4/#18): no NPM_TOKEN. Each package's trusted publisher on
+# npmjs.com must name this file, `release.yml`. Provenance is attached automatically.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version or semver keyword (e.g. 0.1.0, patch, minor). Empty: derived from conventional commits.'
+        required: false
+        default: ''
+      first-release:
+        description: 'First release of the packages (no previous v* tag)'
+        type: boolean
+        default: false
+      dry-run:
+        description: 'Dry run: show the version, changelog and tarballs without committing, tagging or publishing'
+        type: boolean
+        default: true
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write # release commit, tag and GitHub release
+  id-token: write # npm trusted publishing (OIDC) and provenance
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Manual releases are cut from main only.
+    if: github.event_name == 'push' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      NX_NO_CLOUD: true
+      VERSION: ${{ inputs.version }}
+      FIRST_RELEASE: ${{ inputs.first-release && '--first-release' || '' }}
+      DRY_RUN: ${{ inputs.dry-run && '--dry-run' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm >= 11.5.1 (pnpm publish hands the tarball to npm).
+      - run: npm install --global npm@^11.5.1
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Version, changelog, tag and GitHub release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm nx release $VERSION --skip-publish --yes $FIRST_RELEASE $DRY_RUN
+
+      # Builds both packages, re-checks the tarballs (`pack`) and publishes them publicly.
+      - name: Publish to npm
+        run: pnpm nx release publish $FIRST_RELEASE $DRY_RUN

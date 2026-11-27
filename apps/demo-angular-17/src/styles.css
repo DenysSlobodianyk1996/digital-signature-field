@@ -1,0 +1,18 @@
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0 auto;
+  padding: 16px;
+  max-width: 720px;
+}
+
+dsf-signature {
+  width: 100%;
+  max-width: 480px;
+}
+
+output {
+  display: block;
+  word-break: break-all;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}

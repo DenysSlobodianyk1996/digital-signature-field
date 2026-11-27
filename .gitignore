@@ -6,3 +6,7 @@ coverage/
 __screenshots__/
 *.log
 .DS_Store
+.angular/
+out-tsc/
+test-results/
+playwright-report/

@@ -11,5 +11,5 @@ We want one Angular package for Angular 17 up to the latest release. The `<dsf-s
 ## Consequences
 
 - The wrapper must not import from `@angular/forms/signals` at runtime or in type positions. That entry point does not exist in Angular 17.
-- **Risk:** we need to prove that a library built with Angular 17.2 works when consumed by an Angular 22+ app. The first implementation ticket is a spike that checks this with `[formField]` and `formControlName` in `demo-angular`. If it fails, we fall back to two builds of the package.
+- **Risk:** we need to prove that a library built with Angular 17.2 works when consumed by an Angular 22+ app. The first implementation ticket is a spike that checks this with `[formField]` and `formControlName` in `demo-angular`. If it fails, we fall back to two builds of the package. **Result (#6): the strategy holds.** The package built with Angular 17.2 works with `[formField]` and `formControlName` in Angular 22.3, and with `dsfCva` in Angular 17.3; no fallback is needed.
 - In `demo-angular-17`, CI runs end-to-end tests for CVA mode.

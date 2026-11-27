@@ -1,5 +1,5 @@
 import { createApp } from 'vue';
-import App from './App.vue';
+import DemoPage from './recipes/DemoPage.vue';
 import './styles.css';
 
-createApp(App).mount('#app');
+createApp(DemoPage).mount('#app');

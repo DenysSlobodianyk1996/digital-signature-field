@@ -239,6 +239,19 @@ describe('status live region', () => {
     expect(region.textContent).toBe('Signature is empty');
   });
 
+  it('reports a loaded value as signed and hides the placeholder', () => {
+    const source = mount();
+    draw(source, [[10, 10], [60, 10]]);
+    const el = mount();
+    const hint = document.createElement('span');
+    hint.slot = 'placeholder';
+    hint.textContent = 'Sign here';
+    el.append(hint);
+    el.value = source.value;
+    expect(status(el).textContent).toBe('Signature added');
+    expect(isRendered(hint)).toBe(false);
+  });
+
   it('uses the labels for its messages', () => {
     const el = mount();
     el.labels = { emptyStatus: 'Leer', signedStatus: 'Unterschrieben' };

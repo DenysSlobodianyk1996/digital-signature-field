@@ -1,4 +1,5 @@
 import { escapeAttr, round, toSvgMarkup, type RenderOptions } from './render';
+import { signatureDataMarkup, toSignatureData } from './value';
 
 /** One sampled pen position, in drawing-area coordinates. */
 export interface Point {
@@ -31,7 +32,7 @@ export function strokeLength(stroke: Stroke): number {
   return length;
 }
 
-/** A standalone SVG document for the strokes, with a `viewBox` so it scales. */
+/** A standalone SVG document for the strokes, with a `viewBox` so it scales. It embeds the signature data, so it reloads stroke for stroke. */
 export function toSvgDocument(
   strokes: readonly Stroke[],
   size: Size,
@@ -43,6 +44,7 @@ export function toSvgDocument(
   const bg = background === 'transparent' ? '' : `<rect width="100%" height="100%" fill="${escapeAttr(background)}"/>`;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}">` +
+    signatureDataMarkup(toSignatureData(strokes, size)) +
     bg +
     toSvgMarkup(strokes, options) +
     `</svg>`

@@ -87,11 +87,15 @@ export function pointer(
   el: DigitalSignatureFieldElement,
   type: string,
   [x, y]: Point = [0, 0],
-  { pointerId = 1, pointerType = 'mouse' }: { pointerId?: number; pointerType?: string } = {},
+  {
+    pointerId = 1,
+    pointerType = 'mouse',
+    buttons,
+  }: { pointerId?: number; pointerType?: string; buttons?: number } = {},
 ): void {
   const target = area(el);
   const rect = target.getBoundingClientRect();
-  const down = type === 'pointerdown' || type === 'pointermove';
+  const down = buttons === undefined ? type === 'pointerdown' || type === 'pointermove' : buttons !== 0;
   target.dispatchEvent(
     new PointerEvent(type, {
       bubbles: true,
@@ -101,7 +105,7 @@ export function pointer(
       pointerType,
       isPrimary: true,
       button: type === 'pointerdown' ? 0 : -1,
-      buttons: down ? 1 : 0,
+      buttons: buttons ?? (down ? 1 : 0),
       pressure: down ? 0.5 : 0,
       clientX: rect.left + target.clientLeft + x,
       clientY: rect.top + target.clientTop + y,

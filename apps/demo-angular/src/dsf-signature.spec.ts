@@ -181,7 +181,15 @@ describe('<dsf-signature> outputs', () => {
     const rect = area.getBoundingClientRect();
     const send = (type: string, x: number) =>
       area.dispatchEvent(
-        new PointerEvent(type, { bubbles: true, composed: true, pointerId: 1, button: 0, clientX: rect.left + x, clientY: rect.top + 20 }),
+        new PointerEvent(type, {
+          bubbles: true,
+          composed: true,
+          pointerId: 1,
+          button: 0,
+          buttons: type === 'pointercancel' ? 0 : 1,
+          clientX: rect.left + x,
+          clientY: rect.top + 20,
+        }),
       );
     send('pointerdown', 10);
     send('pointermove', 80);

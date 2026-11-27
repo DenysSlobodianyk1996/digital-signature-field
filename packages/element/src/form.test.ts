@@ -208,7 +208,7 @@ describe('form reset', () => {
     document.body.append(source);
     draw(source, [[10, 10], [80, 40]]);
     draw(source, [[10, 60], [80, 90]]);
-    const value = source.value!;
+    const value = source.value as string;
     source.remove();
     return value;
   }

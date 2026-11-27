@@ -49,6 +49,30 @@ const hasPressureData = (points: readonly Point[]): boolean =>
 /** Width factor for a pressure in 0..1: 0.5x at no pressure, 1x at 0.5, 1.5x at full pressure. */
 const pressureFactor = (pressure: number): number => 0.5 + Math.min(1, Math.max(0, pressure));
 
+/** One outline to stroke: SVG path data and the width to stroke it with. */
+export interface StrokePath {
+  d: string;
+  width: number;
+}
+
+/**
+ * The same geometry `toSvgMarkup` draws, as path data, for painters that are not SVG (the PNG export).
+ * A pressure stroke is one path per segment, each with its own width.
+ */
+export function strokePaths(stroke: Stroke, { smoothing, pressure }: RenderOptions): StrokePath[] {
+  const { points } = stroke;
+  if (points.length === 0) return [];
+  if (pressure && points.length >= 2 && hasPressureData(points)) {
+    return curveSegments(points, Math.max(0, smoothing)).map((segment, i) => ({
+      d: `M${xy(points[i]!)} ${segment}`,
+      width: stroke.width * pressureFactor((points[i]!.pressure + points[i + 1]!.pressure) / 2),
+    }));
+  }
+  const segments = curveSegments(points, Math.max(0, smoothing));
+  // A single point still paints a round dot, as an SVG polyline with round caps does.
+  return [{ d: `M${xy(points[0]!)} ${segments.length ? segments.join(' ') : `L${xy(points[0]!)}`}`, width: stroke.width }];
+}
+
 function strokeMarkup(stroke: Stroke, { smoothing, pressure }: RenderOptions): string {
   const color = `stroke="${escapeAttr(stroke.color)}"`;
   const caps = `stroke-linecap="round" stroke-linejoin="round"`;

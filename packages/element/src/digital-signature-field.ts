@@ -1,4 +1,5 @@
 import { ACTIONS_CSS, createActionButton, DEFAULT_ACTION_LABELS, DEFAULT_ACTIONS, type HistoryAction } from './actions';
+import { FormField } from './form';
 import { History } from './history';
 import { strokeLength, toSvgDataUrl, type Point, type Stroke } from './ink';
 import { toSvgMarkup, type RenderOptions } from './render';
@@ -21,6 +22,20 @@ const template = `
     -webkit-user-select: none;
     overflow: hidden;
     cursor: crosshair;
+  }
+  .area:focus-visible {
+    outline: var(--dsf-focus-ring, 2px solid #1a3fbf);
+    outline-offset: 2px;
+  }
+  :host(:state(invalid)) .area {
+    border-color: var(--dsf-invalid-color, #b3261e);
+  }
+  :host(:disabled) .area {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+  :host([readonly]) .area {
+    cursor: default;
   }
   .ink {
     position: absolute;
@@ -58,20 +73,27 @@ interface ActiveStroke {
 }
 
 const DEFAULT_MIN_STROKE_LENGTH = 8;
+const DEFAULT_MIN_STROKES = 1;
 const DEFAULT_PEN_COLOR = '#000';
 const DEFAULT_PEN_WIDTH = 2;
 const DEFAULT_SMOOTHING = 0.5;
 const DEFAULT_HISTORY_LIMIT = 50;
 
 export class DigitalSignatureFieldElement extends HTMLElement {
-  static readonly observedAttributes = ['smoothing', 'pressure', 'history-limit'];
+  static readonly formAssociated = true;
+  static readonly observedAttributes = ['smoothing', 'pressure', 'history-limit', 'required', 'min-strokes', 'readonly'];
 
   readonly #area: HTMLDivElement;
   readonly #ink: SVGSVGElement;
   readonly #actions: HTMLDivElement;
+  readonly #formField: FormField;
 
   /** Kept strokes (in drawing-area coordinates) and their undo/redo history. The SVG is always redrawn from this. */
-  readonly #history = new History<InkState>({ strokes: [] }, DEFAULT_HISTORY_LIMIT);
+  #history = new History<InkState>({ strokes: [] }, DEFAULT_HISTORY_LIMIT);
+  /** What a native form reset restores: the ink the field was first loaded with (empty until a value is loaded). */
+  #initialState: InkState = { strokes: [] };
+  /** Disabled by its own `disabled` attribute or by a disabled ancestor `<fieldset>`. */
+  #formDisabled = false;
   /** Drawing-area size the strokes are stored in; set when the first stroke starts. */
   #size: { width: number; height: number } | null = null;
   #active: ActiveStroke | null = null;
@@ -80,22 +102,28 @@ export class DigitalSignatureFieldElement extends HTMLElement {
 
   constructor() {
     super();
-    const root = this.attachShadow({ mode: 'open' });
+    const root = this.attachShadow({ mode: 'open', delegatesFocus: true });
     root.innerHTML = template;
     this.#area = root.querySelector('.area') as HTMLDivElement;
     this.#ink = root.querySelector('.ink') as SVGSVGElement;
     this.#actions = root.querySelector('.actions') as HTMLDivElement;
+    this.#formField = new FormField(this, this.#area);
     for (const action of DEFAULT_ACTIONS) {
       this.#actions.append(createActionButton(action, DEFAULT_ACTION_LABELS[action]));
     }
     this.#actions.addEventListener('click', this.#onActionClick);
     this.#updateActionButtons();
+    this.#syncForm();
   }
 
   attributeChangedCallback(name: string): void {
     if (name === 'history-limit') {
       this.#history.limit = this.historyLimit;
       this.#syncHistoryState();
+    } else if (name === 'required' || name === 'min-strokes') {
+      this.#syncForm();
+    } else if (name === 'readonly') {
+      this.#syncInteractivity();
     } else {
       this.#render();
     }
@@ -116,6 +144,18 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.#area.removeEventListener('pointercancel', this.#onPointerCancel);
     this.removeEventListener('keydown', this.#onKeyDown);
     this.#active = null;
+  }
+
+  /** Called by the browser for `disabled` on the field or on an ancestor `<fieldset>`. */
+  formDisabledCallback(disabled: boolean): void {
+    this.#formDisabled = disabled;
+    this.#syncInteractivity();
+  }
+
+  /** Native form reset: back to the initial value, as a load (no `change`, fresh history). */
+  formResetCallback(): void {
+    this.#load(this.#initialState);
+    this.#formField.resetInteraction();
   }
 
   /** Strokes shorter than this (in px) are taps: discarded, no ink, no `change`. */
@@ -180,6 +220,82 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     this.setAttribute('history-limit', String(value));
   }
 
+  /** Form field name: the key of the value in `FormData`. */
+  get name(): string {
+    return this.getAttribute('name') ?? '';
+  }
+
+  set name(value: string) {
+    this.setAttribute('name', value);
+  }
+
+  /** The `<form>` this field belongs to, if any. */
+  get form(): HTMLFormElement | null {
+    return this.#formField.form;
+  }
+
+  /** Blocks drawing and all actions, and leaves the value out of form submission. */
+  get disabled(): boolean {
+    return this.hasAttribute('disabled');
+  }
+
+  set disabled(value: boolean) {
+    this.toggleAttribute('disabled', Boolean(value));
+  }
+
+  /** Shows the ink but blocks drawing and all actions. The value is still submitted. */
+  get readOnly(): boolean {
+    return this.hasAttribute('readonly');
+  }
+
+  set readOnly(value: boolean) {
+    this.toggleAttribute('readonly', Boolean(value));
+  }
+
+  /** `true` while the signer may not change the ink (disabled, inside a disabled fieldset, or readonly). */
+  get #locked(): boolean {
+    return this.#formDisabled || this.readOnly;
+  }
+
+  /** An empty field is invalid (`valueMissing`). */
+  get required(): boolean {
+    return this.hasAttribute('required');
+  }
+
+  set required(value: boolean) {
+    this.toggleAttribute('required', Boolean(value));
+  }
+
+  /** A signed field with fewer strokes than this is invalid (`tooShort`). Taps never count. */
+  get minStrokes(): number {
+    const n = Number(this.getAttribute('min-strokes'));
+    return this.hasAttribute('min-strokes') && Number.isInteger(n) && n >= 0 ? n : DEFAULT_MIN_STROKES;
+  }
+
+  set minStrokes(value: number) {
+    this.setAttribute('min-strokes', String(value));
+  }
+
+  get validity(): ValidityState {
+    return this.#formField.validity;
+  }
+
+  get validationMessage(): string {
+    return this.#formField.validationMessage;
+  }
+
+  get willValidate(): boolean {
+    return this.#formField.willValidate;
+  }
+
+  checkValidity(): boolean {
+    return this.#formField.checkValidity();
+  }
+
+  reportValidity(): boolean {
+    return this.#formField.reportValidity();
+  }
+
   get canUndo(): boolean {
     return this.#history.canUndo;
   }
@@ -216,6 +332,18 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     return toSvgDataUrl(this.#strokes, this.#size, this.#renderOptions);
   }
 
+  /** Applies disabled / readonly: drops a stroke in progress, updates the buttons and the tab order. */
+  #syncInteractivity(): void {
+    if (this.#locked && this.#active) {
+      this.#active = null;
+      this.#render();
+    }
+    this.#area.tabIndex = this.#formDisabled ? -1 : 0;
+    if (this.#formDisabled) this.#area.setAttribute('aria-disabled', 'true');
+    else this.#area.removeAttribute('aria-disabled');
+    this.#updateActionButtons();
+  }
+
   /** Disables each built-in button while its action would do nothing. */
   #updateActionButtons(): void {
     const available: Record<HistoryAction, boolean> = {
@@ -224,7 +352,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
       clear: !this.empty,
     };
     for (const button of this.#actions.querySelectorAll<HTMLButtonElement>('button[data-action]')) {
-      button.disabled = !available[button.dataset['action'] as HistoryAction];
+      button.disabled = this.#locked || !available[button.dataset['action'] as HistoryAction];
     }
   }
 
@@ -236,7 +364,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
 
   /** Ctrl/Cmd+Z undoes; Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y redo. Keydowns reach the host only while focus is inside the field. */
   readonly #onKeyDown = (e: KeyboardEvent): void => {
-    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    if (this.#locked || !(e.ctrlKey || e.metaKey) || e.altKey) return;
     const key = e.key.toLowerCase();
     const action: HistoryAction | null =
       key === 'z' ? (e.shiftKey ? 'redo' : 'undo') : key === 'y' && !e.shiftKey ? 'redo' : null;
@@ -246,6 +374,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   };
 
   #run(action: HistoryAction): void {
+    if (this.#locked) return;
     if (action === 'undo') this.undo();
     else if (action === 'redo') this.redo();
     else this.clear();
@@ -270,7 +399,7 @@ export class DigitalSignatureFieldElement extends HTMLElement {
   }
 
   readonly #onPointerDown = (e: PointerEvent): void => {
-    if (this.#active || e.button !== 0) return;
+    if (this.#active || e.button !== 0 || this.#locked) return;
     e.preventDefault();
     try {
       this.#area.setPointerCapture(e.pointerId);
@@ -316,11 +445,35 @@ export class DigitalSignatureFieldElement extends HTMLElement {
     return this.#history.present.strokes;
   }
 
+  /**
+   * Loads ink as the floor of a fresh history (the base layer, ADR-0006). Never fires `change`.
+   * The single load path: form reset uses it, and so does writing `value`.
+   */
+  #load(state: InkState): void {
+    this.#active = null;
+    this.#history = new History<InkState>(state, this.historyLimit);
+    this.#render();
+    this.#syncForm();
+    this.#syncHistoryState();
+  }
+
   /** After the history moved: redraw and tell listeners about the new value. */
   #commit(): void {
     this.#render();
+    this.#syncForm();
+    this.#formField.markInteracted();
     this.dispatchEvent(new CustomEvent('change', { bubbles: true, detail: { value: this.value } }));
     this.#syncHistoryState();
+  }
+
+  /** Reports the current value and validity to the form. */
+  #syncForm(): void {
+    this.#formField.sync({
+      value: this.value,
+      strokeCount: this.#strokes.length,
+      required: this.required,
+      minStrokes: this.minStrokes,
+    });
   }
 
   /** Fires `dsf-history-change` when `canUndo`, `canRedo` or `empty` differ from what was last reported. */
